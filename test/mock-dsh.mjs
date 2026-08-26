@@ -185,6 +185,23 @@ assert.equal(s2.payload.suppliers.find((s) => s.id === "deepseek").todayTokens, 
 assert.equal(s2.payload.suppliers.find((s) => s.id === "deepseek").current, true);
 console.log("✓ session/event 折叠：当日 1500 tokens");
 
+// ---- 真实 DSH 载荷（request/header + usage chunk + assistant/message）----
+// 用户报告「小组件显示 近24h 无流量·按启用清单显示，实际 token 有消耗」：
+// DSH 实际事件里 provider 在 message.source / header.config，usage 字段是 inputTokens。
+emit({ type: "request/header", data: { header: { config: { provider: "commandcode-goat", model: "cc-model" } } } });
+emit({ type: "assistant/chunk", data: { turn: 1, step: 1, chunk: { type: "usage", usage: { inputTokens: 200, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 5 } } } });
+emit({ type: "assistant/message", data: { turn: 1, step: 1, message: { source: { provider: "commandcode-goat", model: "cc-model" } }, usage: { inputTokens: 300, outputTokens: 60 } } });
+emit({ type: "assistant/message", data: { turn: 1, step: 2, message: { source: { provider: "commandcode-goat", model: "cc-model" } }, usage: { inputTokens: 40 } } });
+const s4 = await call("/api/quota-monitor/state");
+const cc2 = s4.payload.suppliers.find((s) => s.id === "commandcode");
+assert.equal(cc2.current, true, "真实 DSH 载荷应驱动 commandcode 进入当前集（而非流量兜底）");
+assert.equal(s4.payload.trafficStale, false, "观测到真实流量后不得再标 近24h无流量");
+assert.equal(cc2.todayTokens, 400, "同一 step 的 usage 应替换而非重复累加（265→360，再 +40 = 400）");
+assert.equal(s4.payload.traffic.scheme, 2, "state 应带流量诊断标记（scheme=2）");
+const ccRoute = s4.payload.traffic.routes.find((r) => r.route === "commandcode-goat");
+assert.ok(ccRoute && ccRoute.supplier === "commandcode", "诊断 routes 应反映 commandcode-goat → commandcode");
+console.log("✓ 真实 DSH 事件载荷：header.config / message.source.provider / inputTokens 折叠正确");
+
 // ---- 用户显式关闭后不被自动探测再次启用（用自动接入的 opencode 验证） ----
 await call("/api/quota-monitor/settings", { suppliers: { opencode: { enabled: false } } });
 await new Promise((r) => setTimeout(r, 3500)); // 等自动探测周期复查
