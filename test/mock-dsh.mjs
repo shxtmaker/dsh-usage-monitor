@@ -170,8 +170,15 @@ assert.ok(det.candidates.some((c) => c.route === "opencode-go" && c.keySource ==
 assert.equal(det.credentialsPresent, true);
 console.log("✓ state：deepseek ok（autoKeySource=file）、opencode/commandcode 自动接入、detectedUnmapped=[openrouter]、detect 诊断正常");
 
-// ---- 事件折叠：assistant/message → 当日消耗量 + 流量 ----
+// ---- 流量兜底（用户报告「小组件信息消失」）：有事件但无任何可用近期流量 → 按启用清单显示 ----
 const emit = (e) => { for (const cb of ctx._events["session/event"]) cb(null, e); };
+emit({ type: "assistant/message", data: { source: { provider: "unknown-route-xyz", model: "m" }, usage: { uncachedInputTokens: 1, outputTokens: 1 } } });
+const sX = await call("/api/quota-monitor/state");
+assert.equal(sX.payload.trafficStale, true, "无近期可用流量时应标记 trafficStale");
+for (const id of ["deepseek", "opencode", "commandcode"]) {
+  assert.equal(sX.payload.suppliers.find((s) => s.id === id).current, true, id + " 应兜底按启用清单显示");
+}
+console.log("✓ 流量兜底：无近期可用流量时小组件按启用清单显示（trafficStale=true）");
 emit({ type: "assistant/message", data: { source: { provider: "deepseek-official", model: "deepseek-v3" }, usage: { uncachedInputTokens: 1000, outputTokens: 500 } } });
 const s2 = await call("/api/quota-monitor/state");
 assert.equal(s2.payload.suppliers.find((s) => s.id === "deepseek").todayTokens, 1500);
