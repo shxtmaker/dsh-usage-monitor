@@ -1,0 +1,9 @@
+# dsh-quota-monitor bundle patch: inserts the dual-face plugin row into the web
+# profile roster. Activate with
+#   dsh plugin --profile web add link:<此目录绝对路径>
+# The node half (exports ".") runs in the host process; the `dsh.client`
+# declaration in package.json makes the browser half (exports "./client",
+# served at /plugins/<id>/client.js) load in the web GUI.
+- insert:
+    - id: quota-monitor
+      name: 'dsh-quota-monitor'

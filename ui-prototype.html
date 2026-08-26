@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用量监控 · UI 原型（PROTOTYPE，非产品代码）</title>
+<!--
+  PLAN: 小组件 UI 原型（票 06）——DSH sidebar 小组件 + 详情页的三个结构迥异的变体，
+        经 ?variant=A|B|C 切换（子形态 B：全新页面，单文件原型，双击即可运行）。
+        数据为假数据，无后端。经过评价后，获胜变体将折叠进真实插件客户端，本文件作废。
+-->
+<style>
+  :root{
+    --bg:#0f1115; --bg2:#151922; --bg3:#1c2230; --line:#262d3d;
+    --txt:#dbe2ee; --dim:#8b94a8; --faint:#5c6577;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --grey:#6b7280;
+    --accent:#4f8cff; --ok:#16a34a;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--txt); font:13px/1.5 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+  /* ---------- 顶栏（演示容器） ---------- */
+  .topbar{display:flex; align-items:center; gap:10px; padding:8px 14px; background:var(--bg2);
+    border-bottom:1px solid var(--line); color:var(--dim); font-size:12px;}
+  .topbar b{color:var(--txt);}
+  .topbar .tag{background:#312e81; color:#c7d2fe; padding:1px 8px; border-radius:10px; font-size:11px;}
+  /* ---------- 演示区 ---------- */
+  .stage{display:flex; gap:18px; padding:18px; align-items:flex-start;}
+  .zone{background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:12px;}
+  .zone>.ztitle{color:var(--faint); font-size:11px; letter-spacing:.08em; margin-bottom:10px;
+    text-transform:uppercase; display:flex; justify-content:space-between;}
+  /* ---------- 小组件（sidebar 宽约 300px） ---------- */
+  #widget-zone{width:320px; flex:none;}
+  .widget{border:1px solid var(--line); border-radius:8px; background:var(--bg3); overflow:hidden;}
+  .widget-head{display:flex; align-items:center; justify-content:space-between; padding:8px 10px;
+    font-size:12px; color:var(--dim); border-bottom:1px solid var(--line);}
+  .widget-head .wtitle{font-weight:600; color:var(--txt);}
+  .widget-head .refresh-hint{color:var(--faint);}
+  .wrefresh-btn{border:1px solid var(--line); background:var(--bg2); color:var(--dim); border-radius:5px;
+    padding:1px 8px; font-size:11px; cursor:pointer;}
+  /* 供应商行 */
+  .sup{border-bottom:1px solid var(--line); position:relative; cursor:pointer;}
+  .sup:last-child{border-bottom:none;}
+  .sup .bar{position:absolute; left:0; top:0; bottom:0; width:3px;}
+  .sup.ok .bar{background:var(--green);} .sup.warn .bar{background:var(--amber);}
+  .sup.crit .bar{background:var(--red);} .sup.err .bar{background:var(--grey);}
+  .sup-row{display:flex; align-items:center; gap:8px; padding:7px 10px 7px 13px;}
+  .sup-name{font-weight:600; flex:none; width:76px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sup-main{flex:1; min-width:0;}
+  .sup-headline{display:flex; align-items:baseline; gap:6px;}
+  .sup-pct{font-weight:700; font-size:14px;}
+  .sup.ok .sup-pct{color:var(--green);} .sup.warn .sup-pct{color:var(--amber);}
+  .sup.crit .sup-pct{color:var(--red);} .sup.err .sup-pct{color:var(--dim);}
+  .sup-amt{color:var(--dim); font-size:12px;}
+  .sup-reset{color:var(--faint); font-size:11px; flex:none;}
+  .progress{height:4px; background:#2a3143; border-radius:2px; margin-top:4px; overflow:hidden;}
+  .progress>i{display:block; height:100%; border-radius:2px;}
+  .sup.ok .progress>i{background:var(--green);} .sup.warn .progress>i{background:var(--amber);}
+  .sup.crit .progress>i{background:var(--red);} .sup.err .progress>i{background:var(--grey);}
+  .sup-toggle{color:var(--faint); font-size:10px; flex:none;}
+  /* 子行 */
+  .subs{background:rgba(0,0,0,.22); padding:2px 0;}
+  .sub{display:flex; align-items:center; gap:8px; padding:5px 10px 5px 16px; font-size:12px;}
+  .sub-name{color:var(--dim); width:84px; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sub-val{flex:1; display:flex; justify-content:flex-end; gap:10px; color:var(--txt);}
+  .sub-val span{color:var(--faint); font-size:11px;}
+  .sub .mini{width:56px; height:3px; background:#2a3143; border-radius:2px; overflow:hidden; align-self:center;}
+  .sub .mini>i{display:block; height:100%;}
+  .sub.err .sub-name{color:var(--red);}
+  /* 悬停提示 */
+  .ttip{display:none; position:absolute; left:100%; top:-4px; margin-left:8px; width:250px; z-index:50;
+    background:#0b0e13; border:1px solid var(--line); border-radius:8px; padding:10px; box-shadow:0 8px 24px rgba(0,0,0,.5);}
+  .sup:hover .ttip{display:block;}
+  .ttip h4{font-size:12px; margin-bottom:6px;}
+  .ttip table{width:100%; font-size:11px; border-collapse:collapse;}
+  .ttip td{padding:2px 4px; color:var(--txt);}
+  .ttip td:first-child{color:var(--faint); width:64px;}
+  .ttip .err-line{color:var(--red); margin-top:6px; font-size:11px;}
+  /* 详情页 */
+  #detail-zone{flex:1; min-width:0;}
+  .dlg-title{font-size:14px; font-weight:700; display:flex; align-items:center; gap:10px;}
+  .dlg-actions{display:flex; gap:8px;}
+  .btn{border:1px solid var(--line); background:var(--bg2); color:var(--dim); border-radius:6px;
+    padding:3px 12px; font-size:12px; cursor:pointer;}
+  .btn:hover{color:var(--txt); border-color:var(--accent);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  table.dlg{width:100%; border-collapse:collapse; font-size:12px;}
+  table.dlg th{color:var(--faint); font-weight:500; text-align:left; padding:6px 8px;
+    border-bottom:1px solid var(--line); font-size:11px; white-space:nowrap;}
+  table.dlg td{padding:6px 8px; border-bottom:1px solid #1d2330; white-space:nowrap;}
+  table.dlg tr.grp td{background:var(--bg3); color:var(--txt); font-weight:700; padding:6px 8px; border-top:1px solid var(--line);}
+  table.dlg td.num{text-align:right; font-variant-numeric:tabular-nums;}
+  .pill{display:inline-block; padding:0 7px; border-radius:9px; font-size:11px;}
+  .pill.ok{background:rgba(52,211,153,.14); color:var(--green);}
+  .pill.warn{background:rgba(251,191,36,.14); color:var(--amber);}
+  .pill.crit{background:rgba(248,113,113,.14); color:var(--red);}
+  .pill.err{background:rgba(107,114,128,.18); color:var(--dim);}
+  .pill.off{background:rgba(107,114,128,.1); color:var(--faint);}
+  tr.err-row td{background:rgba(107,114,128,.07); color:var(--dim);}
+  .err-reason{color:var(--red); font-size:11px;}
+  .dlg-sub{color:var(--faint); font-size:11px; margin-top:6px;}
+  /* 刷新历史 */
+  details.history{margin-top:14px; border:1px solid var(--line); border-radius:8px; background:var(--bg3);}
+  details.history summary{cursor:pointer; padding:8px 12px; color:var(--dim); font-size:12px; list-style:none;}
+  details.history summary::before{content:"▸ "; color:var(--faint);}
+  details.history[open] summary::before{content:"▾ ";}
+  details.history .hwrap{padding:0 12px 10px;}
+  /* 空态 */
+  .empty{padding:26px 16px; text-align:center; color:var(--dim); font-size:13px; border:1px dashed var(--line); border-radius:8px;}
+  .empty .big{font-size:26px; margin-bottom:8px;}
+  .empty .btn{margin-top:12px;}
+  /* ---------- 变体 B：仪表卡 ---------- */
+  .cards{display:flex; flex-direction:column; gap:8px;}
+  .card{border:1px solid var(--line); border-radius:10px; background:var(--bg3); padding:9px 10px; cursor:pointer; position:relative;}
+  .card-top{display:flex; align-items:center; gap:9px;}
+  .ring{width:34px; height:34px; flex:none; transform:rotate(-90deg);}
+  .ring circle{fill:none; stroke-width:4; stroke:#2a3143;}
+  .ring circle.fg{stroke-linecap:round;}
+  .card-name{font-weight:600; flex:1;}
+  .card .reset{color:var(--faint); font-size:11px;}
+  .card-summary{font-size:12px; color:var(--dim); margin-top:4px; padding-left:43px;}
+  .card .subs{border-top:1px dashed var(--line); margin-top:8px; padding-top:4px;}
+  .card-body{display:none;} .card.open .card-body{display:block;}
+  .card .badge{position:absolute; right:10px; top:8px;}
+  /* 变体 B：供应商分栏详情 */
+  .cols{display:flex; gap:12px; overflow-x:auto;}
+  .col{flex:1; min-width:220px; border:1px solid var(--line); border-radius:8px; background:var(--bg3);}
+  .col h4{padding:8px 10px; font-size:12px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between;}
+  .col .citem{padding:8px 10px; border-bottom:1px solid #1d2330;}
+  .col .citem:last-child{border-bottom:none;}
+  .col .cname{color:var(--dim); font-size:11px;}
+  .col .cbig{font-weight:700; font-size:14px;}
+  .col .crow{display:flex; justify-content:space-between; font-size:11px; color:var(--faint); margin-top:2px;}
+  /* ---------- 变体 C：状态点 ---------- */
+  .dots{display:flex; flex-direction:column; gap:2px; padding:8px 10px;}
+  .dotrow{display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:6px; cursor:pointer; position:relative;}
+  .dotrow:hover{background:#20283a;}
+  .dot{width:10px; height:10px; border-radius:50%; flex:none;}
+  .dot.ok{background:var(--green);} .dot.warn{background:var(--amber);} .dot.crit{background:var(--red);}
+  .dot.err{background:var(--grey);}
+  .dotrow .dlabel{font-size:12px; flex:1;}
+  .dotrow .dpct{font-size:12px; font-weight:600;}
+  .dotrow .dpct.ok{color:var(--green);} .dotrow .dpct.warn{color:var(--amber);}
+  .dotrow .dpct.crit{color:var(--red);} .dotrow .dpct.err{color:var(--faint);}
+  .pop{border:1px solid var(--line); border-radius:8px; background:#0b0e13; padding:8px 10px; margin:2px 0 4px 24px; font-size:11px;}
+  .pop .prow{display:flex; justify-content:space-between; gap:12px; padding:2px 0; color:var(--dim);}
+  .pop .prow b{color:var(--txt); font-weight:600;}
+  /* 变体 C：详情页筛选 chips */
+  .chips{display:flex; gap:6px; margin-bottom:10px;}
+  .chip{border:1px solid var(--line); background:var(--bg2); color:var(--dim); padding:2px 12px;
+    border-radius:13px; font-size:12px; cursor:pointer;}
+  .chip.on{background:var(--accent); border-color:var(--accent); color:#fff;}
+  /* ---------- 变体切换条 ---------- */
+  .switcher{position:fixed; left:50%; bottom:14px; transform:translateX(-50%); z-index:100;
+    display:flex; align-items:center; gap:10px; background:#0b0e13; border:1px solid var(--line);
+    border-radius:22px; padding:5px 12px; box-shadow:0 10px 30px rgba(0,0,0,.6); font-size:12px;}
+  .switcher button{background:none; border:none; color:var(--accent); font-size:16px; cursor:pointer; padding:0 4px;}
+  .switcher .label{color:var(--txt); min-width:150px; text-align:center;}
+  .switcher .hint{color:var(--faint); font-size:11px;}
+  .demo{position:fixed; right:14px; bottom:14px; z-index:100; display:flex; gap:6px; align-items:center;
+    background:#0b0e13; border:1px solid var(--line); border-radius:20px; padding:5px 10px; font-size:11px; color:var(--dim);}
+  .demo button{border:1px solid var(--line); background:var(--bg2); color:var(--dim); border-radius:12px;
+    padding:1px 10px; font-size:11px; cursor:pointer;}
+  .demo button.onn{background:var(--accent); color:#fff; border-color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="tag">PROTOTYPE 票 06</span>
+  <b>用量监控 · DSH sidebar 小组件 + 详情页</b>
+  <span>— 三个变体（结构不同），底部切换。假数据，无后端。</span>
+</div>
+
+<div class="stage">
+  <!-- 左：小组件（sidebar 槽位） -->
+  <div class="zone" id="widget-zone">
+    <div class="ztitle"><span>小组件 · sidebar 槽位（当前供应商）</span><span id="wz-time"></span></div>
+    <div id="widget"></div>
+  </div>
+  <!-- 右：详情页 -->
+  <div class="zone" id="detail-zone">
+    <div class="ztitle"><span>详情页（点击小组件行内「详情」打开）</span></div>
+    <div id="detail"></div>
+  </div>
+</div>
+
+<div class="demo">
+  演示：<button id="btn-normal" class="onn">全量状态</button><button id="btn-empty">空态</button>
+</div>
+
+<div class="switcher">
+  <button id="prev" title="上一个变体 (←)">◀</button>
+  <span class="label" id="variant-label">A · 列表式</span>
+  <button id="next" title="下一个变体 (→)">▶</button>
+  <span class="hint" id="url-hint"></span>
+</div>
+
+<script>
+/* ================= 假数据（v1 供应商：DeepSeek / OpenCode / Command Code；+ 未配置示例） ================= */
+const SUPPLIERS = [
+  {
+    id:"deepseek", name:"DeepSeek", state:"ok", current:true,
+    headline:{kind:"amt", amt:"¥128.45"}, reset:"—", lastRefresh:"11:02:18",
+    entries:[
+      {name:"余额", kind:"bal", limit:"—", used:"—", remain:"¥128.45", pct:null, unit:"",
+       reset:"—", extra:"到账 ¥108.45 · 赠送 ¥20.00"},
+    ],
+  },
+  {
+    id:"opencode", name:"OpenCode", state:"warn", current:true,
+    headline:{kind:"pct", pct:"15.00%", amt:"余 1.09M"}, reset:"约 2 天后重置", lastRefresh:"11:02:18",
+    entries:[
+      {name:"周窗口", kind:"win", limit:"7.30M", used:"6.21M", remain:"1.09M", pct:"15.00%", unit:"tokens",
+       reset:"约 2 天后重置", extra:"最紧限额项"},
+      {name:"滚动窗口 (10h)", kind:"win", limit:"1.50M", used:"1.08M", remain:"0.42M", pct:"72.00%", unit:"tokens",
+       reset:"约 6 小时后重置"},
+      {name:"月窗口", kind:"win", limit:"51.00M", used:"21.10M", remain:"29.90M", pct:"41.37%", unit:"tokens",
+       reset:"8 月 31 日重置"},
+      {name:"allowance", kind:"bal", limit:"$50.00", used:"$23.50", remain:"$26.50", pct:"47.00%", unit:"",
+       reset:"下月 1 日重置"},
+    ],
+  },
+  {
+    id:"commandcode", name:"Command Code", state:"err", current:true, error:"401 Unauthorized (Key 失效)",
+    headline:{kind:"stale", pct:"40.00%", amt:"旧值 4.0K/10.0K"}, reset:"—", lastRefresh:"10:12:44（失败）",
+    entries:[
+      {name:"月度配额", kind:"win", limit:"10.00K", used:"4.00K", remain:"6.00K", pct:"40.00%", unit:"credits",
+       reset:"9 月 1 日重置", extra:"旧值 · 已停止更新"},
+      {name:"5h 窗口", kind:"win", limit:"2.00K", used:"0.68K", remain:"1.32K", pct:"66.00%", unit:"credits",
+       reset:"约 3 小时后重置", extra:"旧值"},
+      {name:"周窗口", kind:"win", limit:"14.00K", used:"8.54K", remain:"5.46K", pct:"61.00%", unit:"credits",
+       reset:"9 月 1 日重置", extra:"旧值"},
+    ],
+  },
+  {
+    id:"openai", name:"OpenAI", state:"off", current:false, error:"未配置 API Key",
+    headline:{kind:"none", amt:"未配置"}, reset:"—", lastRefresh:"—",
+    entries:[],
+  },
+];
+
+const HISTORY = [
+  {t:"11:02:18", s:"DeepSeek",  r:"成功", m:"余额 ¥128.45"},
+  {t:"11:02:18", s:"OpenCode",  r:"成功", m:"最紧 15.00%（周窗口）"},
+  {t:"11:02:18", s:"Command Code", r:"失败 · 401", m:"旧值 40.00%"},
+  {t:"11:01:18", s:"DeepSeek",  r:"成功", m:"余额 ¥128.45"},
+  {t:"11:01:18", s:"OpenCode",  r:"成功", m:"最紧 15.00%（周窗口）"},
+  {t:"11:01:18", s:"Command Code", r:"失败 · 401", m:"旧值 40.00%"},
+];
+
+/* ================= 工具 ================= */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let demoEmpty = false;
+let cur = null;         // 当前展开的供应商 id（A/B）
+let openDetail = null;  // 详情页打开状态
+let openChip = "all";   // 变体 C 的筛选项
+
+/* ================= 变体 A：列表式 ================= */
+function renderA(){
+  const w = $("#widget");
+  const list = demoEmpty ? [] : SUPPLIERS.filter(s => s.current);
+  if(!list.length){
+    w.innerHTML = `<div class="empty"><div class="big">◌</div>暂无当前供应商<br>
+      <button class="btn primary">打开设置</button></div>`;
+    return;
+  }
+  w.innerHTML = `<div class="widget"><div class="widget-head">
+      <span class="wtitle">用量监控</span>
+      <span class="refresh-hint">每 60s 自动刷新 · <button class="wrefresh-btn">⟳ 刷新</button></span>
+    </div>` + list.map(s => rowA(s)).join("") + `</div>`;
+}
+function rowA(s){
+  const pct = s.headline.pct, amt = s.headline.amt;
+  const pctHtml = pct ? `<span class="sup-pct">${esc(pct)}</span>` : `<span class="sup-amt">${esc(amt)}</span>`;
+  const subs = (s.entries||[]).map(e => `
+    <div class="sub ${e.pct===null||s.state==="err"?"err":""}">
+      <span class="sub-name">${esc(e.name)}</span>
+      <span class="mini"><i style="width:${Math.min(100,parseFloat(e.pct)||0)}%;background:${s.state==="err"?"#6b7280":(parseFloat(e.pct)<=20?"#f87171":parseFloat(e.pct)<=80?"#fbbf24":"#34d399")}"></i></span>
+      <span class="sub-val">余 ${esc(e.remain)}<span>${esc(e.reset)}</span></span>
+    </div>`).join("");
+  return `<div class="sup ${s.state} ${cur===s.id?"open":""}" data-id="${s.id}">
+    <span class="bar"></span>
+    <div class="sup-row">
+      <span class="sup-name">${esc(s.name)}</span>
+      <span class="sup-main">
+        <span class="sup-headline">${pctHtml} ${s.state==="err"?'<span class="sup-amt">旧值</span>':""}</span>
+        <span class="progress"><i style="width:${pct?Math.min(100,parseFloat(pct)):0}%"></i></span>
+      </span>
+      <span class="sup-reset">${esc(s.reset)}</span>
+      <span class="sup-toggle">${cur===s.id?"▾":"▸"}</span>
+    </div>
+    ${cur===s.id?`<div class="subs">${subs}</div>`:""}
+    ${ttip(s)}
+  </div>`;
+}
+function ttip(s){
+  const rows = (s.entries||[]).map(e =>
+    `<tr><td>${esc(e.name)}</td><td>限额 ${esc(e.limit)} · 已用 ${esc(e.used)} · 剩余 ${esc(e.remain)}${e.unit?" "+esc(e.unit):""}${e.extra?" · "+esc(e.extra):""}</td></tr>`).join("");
+  return `<div class="ttip"><h4>${esc(s.name)}</h4><table>${rows}
+    <tr><td>刷新</td><td>${esc(s.lastRefresh)}</td></tr></table>
+    ${s.error?`<div class="err-line">⚠ ${esc(s.error)}</div>`:""}</div>`;
+}
+/* 详情页 A：供应商分组表格 */
+function detailA(){
+  const d = $("#detail");
+  if(demoEmpty){
+    d.innerHTML = `<div class="empty"><div class="big">📭</div>尚未配置供应商<br>
+      <button class="btn primary">前往设置</button></div>`;
+    return;
+  }
+  const groups = SUPPLIERS.map(s => {
+    const rows = (s.entries||[]).map(e => `
+      <tr class="${s.state==="err"?"err-row":""}">
+        <td>${esc(e.name)}</td>
+        <td class="num">${esc(e.limit)}</td><td class="num">${esc(e.used)}</td>
+        <td class="num">${esc(e.remain)}</td>
+        <td class="num">${e.pct?esc(e.pct):"—"}</td>
+        <td>${esc(e.reset)}</td>
+        <td><span class="pill ${s.state}">${pillText(s,e)}</span></td>
+        <td>${esc(s.lastRefresh)}</td>
+        ${s.error?`<td class="err-reason">${esc(s.error)}</td>`:""}
+      </tr>`).join("") || `<tr class="err-row"><td>（无限额项）</td><td colspan="8">${esc(s.error||"")}</td></tr>`;
+    return `<tr class="grp"><td colspan="${s.error?9:8}">${esc(s.name)} ${s.current?'<span style="color:var(--faint);font-weight:400">· 当前</span>':""}</td></tr>${rows}`;
+  }).join("");
+  d.innerHTML = `<div class="dlg-title">供应商限额明细
+      <span class="dlg-actions"><button class="btn">⟳ 刷新全部</button><button class="btn primary">设置</button></span>
+    </div>
+    <div class="dlg-sub">按剩余百分比升序（最紧在上）· 显示全部已配置供应商 · 单次刷新 6 个方法 / 3 供应商</div>
+    <table class="dlg"><thead><tr>
+      <th>限额项</th><th>限额</th><th>已用</th><th>剩余</th><th>百分比</th>
+      <th>重置</th><th>状态</th><th>上次刷新</th>${SUPPLIERS.some(s=>s.error)?'<th>错误原因</th>':""}
+    </tr></thead><tbody>${groups}</tbody></table>
+    <details class="history"><summary>刷新历史（最近 6 条）</summary><div class="hwrap"><table class="dlg">
+      <thead><tr><th>时间</th><th>供应商</th><th>结果</th><th>主指标</th><th>备注</th></tr></thead>
+      <tbody>${HISTORY.map(h=>`<tr><td>${h.t}</td><td>${h.s}</td><td>${h.r}</td><td>${h.m}</td><td></td></tr>`).join("")}</tbody>
+    </table></div></details>`;
+}
+function pillText(s,e){
+  if(s.state==="err") return "取数失败"; if(s.state==="off") return "未配置";
+  return (e.pct===null)?"正常":(parseFloat(e.pct)<=20?"临界":parseFloat(e.pct)<=80?"警告":"正常");
+}
+
+/* ================= 变体 B：仪表卡 ================= */
+function renderB(){
+  const w = $("#widget");
+  const list = demoEmpty ? [] : SUPPLIERS.filter(s => s.current);
+  if(!list.length){
+    w.innerHTML = `<div class="empty"><div class="big">◌</div>暂无当前供应商<br>
+      <button class="btn primary">打开设置</button></div>`;
+    return;
+  }
+  w.innerHTML = `<div class="widget"><div class="widget-head">
+      <span class="wtitle">用量监控</span><span class="refresh-hint">60s 轮询</span>
+    </div><div class="cards">` + list.map(s => cardB(s)).join("") + `</div></div>`;
+}
+function cardB(s){
+  const pct = parseFloat(s.headline.pct) || 0;
+  const col = s.state==="err"?"#6b7280":pct<=20?"#f87171":pct<=80?"#fbbf24":"#34d399";
+  const r = 14, C = 2*Math.PI*r;
+  const ring = s.headline.pct ? `
+    <svg class="ring" width="34" height="34">
+      <circle cx="17" cy="17" r="${r}"></circle>
+      <circle class="fg" cx="17" cy="17" r="${r}" stroke="${col}" stroke-dasharray="${C*pct/100} ${C}"></circle>
+    </svg>` : `<span style="width:34px;text-align:center;flex:none">💳</span>`;
+  const subs = (s.entries||[]).map(e => `
+    <div class="sub">
+      <span class="sub-name">${esc(e.name)}</span>
+      <span class="sub-val">余 ${esc(e.remain)}<span>${esc(e.reset)}</span></span>
+    </div>`).join("");
+  return `<div class="card ${cur===s.id?"open":""}" data-id="${s.id}">
+    <span class="badge"><span class="pill ${s.state}">${s.state==="err"?"取数失败":s.state==="off"?"未配置":pct<=20?"临界":pct<=80?"警告":"正常"}</span></span>
+    <div class="card-top">${ring}<span class="card-name">${esc(s.name)}</span>
+      <span class="reset">${esc(s.reset)}</span></div>
+    <div class="card-summary">${esc(s.headline.amt||"")}${s.error?`<span style="color:var(--red)"> · ⚠ ${esc(s.error)}</span>`:""} · 上次刷新 ${esc(s.lastRefresh)}</div>
+    <div class="card-body"><div class="subs">${subs}</div></div>
+    ${ttip(s)}
+  </div>`;
+}
+/* 详情页 B：供应商分栏（kanban 风） */
+function detailB(){
+  const d = $("#detail");
+  if(demoEmpty){
+    d.innerHTML = `<div class="empty"><div class="big">📭</div>尚未配置供应商<br>
+      <button class="btn primary">前往设置</button></div>`;
+    return;
+  }
+  const cols = SUPPLIERS.map(s => {
+    const items = (s.entries||[]).map(e => `
+      <div class="citem">
+        <div class="cname">${esc(e.name)} ${e.extra?"· "+esc(e.extra):""}</div>
+        <div class="cbig ${s.state}">${e.pct?esc(e.pct):esc(e.remain)}</div>
+        <div class="crow"><span>限额 ${esc(e.limit)}</span><span>已用 ${esc(e.used)}</span><span>${esc(e.reset)}</span></div>
+      </div>`).join("") || `<div class="citem"><div class="err-reason">${esc(s.error||"无数据")}</div></div>`;
+    return `<div class="col"><h4>${esc(s.name)}<span class="pill ${s.state}">${pillText(s,{pct:s.headline.pct})}</span></h4>${items}</div>`;
+  }).join("");
+  d.innerHTML = `<div class="dlg-title">供应商限额明细
+      <span class="dlg-actions"><button class="btn">⟳ 刷新全部</button><button class="btn primary">设置</button></span>
+    </div><div class="dlg-sub">分栏 = 供应商 · 栏内卡片 = 限额项（含刷新时间步）</div>
+    <div class="cols">${cols}</div>
+    <details class="history"><summary>刷新历史（最近 6 条）</summary><div class="hwrap"><table class="dlg">
+      <thead><tr><th>时间</th><th>供应商</th><th>结果</th><th>主指标</th><th>备注</th></tr></thead>
+      <tbody>${HISTORY.map(h=>`<tr><td>${h.t}</td><td>${h.s}</td><td>${h.r}</td><td>${h.m}</td><td></td></tr>`).join("")}</tbody>
+    </table></div></details>`;
+}
+
+/* ================= 变体 C：状态点 ================= */
+function renderC(){
+  const w = $("#widget");
+  const list = demoEmpty ? [] : SUPPLIERS.filter(s => s.current);
+  if(!list.length){
+    w.innerHTML = `<div class="empty"><div class="big">◌</div>暂无当前供应商<br>
+      <button class="btn primary">打开设置</button></div>`;
+    return;
+  }
+  w.innerHTML = `<div class="widget"><div class="widget-head">
+      <span class="wtitle">用量</span><span class="refresh-hint">60s</span>
+    </div><div class="dots">` + list.map(s => `
+      <div class="dotrow" data-id="${s.id}">
+        <span class="dot ${s.state}"></span>
+        <span class="dlabel">${esc(s.name)}</span>
+        <span class="dpct ${s.state}">${esc(s.headline.pct||s.headline.amt)}</span>
+      </div>
+      ${cur===s.id?`<div class="pop">${(s.entries||[]).map(e=>
+        `<div class="prow"><span>${esc(e.name)}</span><b>余 ${esc(e.remain)}</b></div>
+         <div class="prow"><span></span><span style="color:var(--faint)">${esc(e.reset)}</span></div>`).join("")}
+        ${s.error?`<div class="err-reason">⚠ ${esc(s.error)}</div>`:""}
+        <div class="prow"><span style="color:var(--faint)">上次刷新</span><span style="color:var(--faint)">${esc(s.lastRefresh)}</span></div>
+      </div>`:""}
+    `).join("") + `</div></div>`;
+}
+/* 详情页 C：统一表 + 筛选 chips */
+function detailC(){
+  const d = $("#detail");
+  if(demoEmpty){
+    d.innerHTML = `<div class="empty"><div class="big">📭</div>尚未配置供应商<br>
+      <button class="btn primary">前往设置</button></div>`;
+    return;
+  }
+  let src = SUPPLIERS;
+  if(openChip==="cur") src = src.filter(s=>s.current);
+  if(openChip==="warn") src = src.filter(s=>s.state==="warn"||s.state==="crit"||s.state==="err");
+  const rows = src.map(s => (s.entries||[]).map(e => `
+      <tr class="${s.state==="err"?"err-row":""}">
+        <td>${esc(s.name)}${s.current?' <span style="color:var(--faint)">·当前</span>':""}</td>
+        <td>${esc(e.name)}</td>
+        <td class="num">${esc(e.limit)}</td><td class="num">${esc(e.used)}</td>
+        <td class="num">${esc(e.remain)}</td>
+        <td class="num">${e.pct?esc(e.pct):"—"}</td>
+        <td>${esc(e.reset)}</td>
+        <td><span class="pill ${s.state}">${pillText(s,e)}</span></td>
+        <td>${esc(s.lastRefresh)}</td>
+        ${s.error?`<td class="err-reason">${esc(s.error)}</td>`:""}
+      </tr>`).join("") || `<tr class="err-row"><td>${esc(s.name)}</td><td colspan="8">${esc(s.error||"")}</td></tr>`).join("");
+  d.innerHTML = `<div class="dlg-title">供应商限额明细
+      <span class="dlg-actions"><button class="btn">⟳ 刷新全部</button><button class="btn primary">设置</button></span>
+    </div>
+    <div class="chips">
+      <span class="chip ${openChip==="all"?"on":""}" data-chip="all">全部 ${SUPPLIERS.length}</span>
+      <span class="chip ${openChip==="cur"?"on":""}" data-chip="cur">当前 ${SUPPLIERS.filter(s=>s.current).length}</span>
+      <span class="chip ${openChip==="warn"?"on":""}" data-chip="warn">仅异常</span>
+    </div>
+    <table class="dlg"><thead><tr>
+      <th>供应商</th><th>限额项</th><th>限额</th><th>已用</th><th>剩余</th><th>百分比</th>
+      <th>重置</th><th>状态</th><th>上次刷新</th>${SUPPLIERS.some(s=>s.error)?'<th>错误原因</th>':""}
+    </tr></thead><tbody>${rows}</tbody></table>
+    <details class="history"><summary>刷新历史（最近 6 条）</summary><div class="hwrap"><table class="dlg">
+      <thead><tr><th>时间</th><th>供应商</th><th>结果</th><th>主指标</th><th>备注</th></tr></thead>
+      <tbody>${HISTORY.map(h=>`<tr><td>${h.t}</td><td>${h.s}</td><td>${h.r}</td><td>${h.m}</td><td></td></tr>`).join("")}</tbody>
+    </table></div></details>`;
+}
+
+/* ================= 渲染调度 ================= */
+const VARIANT_NAMES = {A:"列表式", B:"仪表卡", C:"状态点"};
+function render(){
+  if(variant==="A"){ renderA(); detailA(); }
+  if(variant==="B"){ renderB(); detailB(); }
+  if(variant==="C"){ renderC(); detailC(); }
+  $("#variant-label").textContent = `${variant} · ${VARIANT_NAMES[variant]}`;
+  const p = new URLSearchParams(location.search); p.set("variant", variant);
+  history.replaceState(null, "", "?"+p.toString());
+  $("#url-hint").textContent = "?variant="+variant;
+  $("#btn-normal").classList.toggle("onn", !demoEmpty);
+  $("#btn-empty").classList.toggle("onn", demoEmpty);
+  $("#wz-time").textContent = "假数据";
+}
+let variant = new URLSearchParams(location.search).get("variant") || "A";
+["A","B","C"].includes(variant) || (variant="A");
+
+document.addEventListener("click", e => {
+  const sup = e.target.closest(".sup, .card, .dotrow");
+  if(sup){ cur = cur===sup.dataset.id ? null : sup.dataset.id; render(); return; }
+  const chip = e.target.closest(".chip");
+  if(chip){ openChip = chip.dataset.chip; render(); return; }
+  render();
+});
+document.addEventListener("keydown", e => {
+  if(/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if(e.key==="ArrowLeft"){ variant = variant==="A"?"C":String.fromCharCode(variant.charCodeAt(0)-1); render(); }
+  if(e.key==="ArrowRight"){ variant = variant==="A"?"B":variant==="B"?"C":"A"; render(); }
+});
+$("#prev").onclick = () => { variant = variant==="A"?"C":String.fromCharCode(variant.charCodeAt(0)-1); render(); };
+$("#next").onclick = () => { variant = variant==="A"?"B":variant==="B"?"C":"A"; render(); };
+$("#btn-normal").onclick = () => { demoEmpty = false; render(); };
+$("#btn-empty").onclick = () => { demoEmpty = true; render(); };
+render();
+</script>
+</body>
+</html>
