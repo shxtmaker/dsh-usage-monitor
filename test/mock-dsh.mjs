@@ -1,7 +1,11 @@
 // test/mock-dsh.mjs — 宿主半集成冒烟（mock Cordis ctx + fetch，真实调度/路由/自动探测代码）
 // 用法：node test/mock-dsh.mjs
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { apply } from "../lib/index.js";
+import { hourKeyOf, loadUsageFile, usageFilePath } from "../lib/storage.js";
 
 const NS = "quota-monitor";
 // 初始：三家都未配置（模拟新装插件），等待自动探测接入
@@ -101,6 +105,10 @@ globalThis.fetch = async (url, opts) => {
   if (u.includes("zen/go/v1/usage")) return { ok: false, status: 404, text: async () => "" };
   return { ok: false, status: 401, text: async () => "" };
 };
+
+// 本地用量数据落盘目标：隔离的临时 DSH_HOME（不污染真实 ~/.dsh）
+const TEST_HOME = mkdtempSync(join(tmpdir(), "qm-mock-home-"));
+process.env.DSH_HOME = TEST_HOME;
 
 const dispose = apply(ctx);
 await new Promise((r) => setTimeout(r, 400)); // 首轮 tick + 自动探测填入
@@ -202,6 +210,17 @@ const ccRoute = s4.payload.traffic.routes.find((r) => r.route === "commandcode-g
 assert.ok(ccRoute && ccRoute.supplier === "commandcode", "诊断 routes 应反映 commandcode-goat → commandcode");
 console.log("✓ 真实 DSH 事件载荷：header.config / message.source.provider / inputTokens 折叠正确");
 
+// ---- 本地用量数据落盘（防抖 2s 后落盘，重载回读一致） ----
+await new Promise((r) => setTimeout(r, 2500)); // 等防抖写入
+const usageFile = usageFilePath(TEST_HOME);
+const onDisk = loadUsageFile(usageFile);
+assert.ok(onDisk.commandcode, "commandcode 应有落盘小时桶");
+const hour = hourKeyOf();
+assert.equal(onDisk.commandcode[hour], 400, "落盘小时桶应等于折叠后的当日数值（含替换语义）");
+assert.equal(onDisk.deepseek[hour], 1500, "legacy 载荷的 deepseek 也应落盘");
+assert.equal(s4.payload.poll.retentionDays, 7, "默认保留期应为 7 天");
+console.log(`✓ 本地用量数据落盘：${usageFile}（commandcode=400，deepseek=1500，载入回读一致）`);
+
 // ---- 用户显式关闭后不被自动探测再次启用（用自动接入的 opencode 验证） ----
 await call("/api/quota-monitor/settings", { suppliers: { opencode: { enabled: false } } });
 await new Promise((r) => setTimeout(r, 3500)); // 等自动探测周期复查
@@ -229,5 +248,6 @@ assert.equal(r.payload.history.filter((h) => h.supplier === "deepseek").length >
 console.log("✓ refresh 路由 + 刷新历史记录");
 
 dispose();
+rmSync(TEST_HOME, { recursive: true, force: true });
 console.log("\n宿主半集成测试全部通过 ✔");
 

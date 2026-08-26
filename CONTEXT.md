@@ -44,8 +44,16 @@ A supplier the harness is actually using now — enabled in the DSH configuratio
 _Avoid_: active provider, used supplier
 
 **当日消耗量 (Daily Usage)**:
-Token consumption attributed per supplier from DSH session events, aggregated over the current calendar day (resets at 00:00); suppliers without a DSH route show "—".
+Token consumption attributed per supplier from DSH session events, aggregated over the current calendar day (resets at 00:00); suppliers without a DSH route show "—". Backed by the plugin's **本地用量数据** so it survives restarts.
 _Avoid_: today's usage, daily token count
+
+**本地用量数据 (Local Usage Data)**:
+The plugin's token-consumption statistics persisted as supplier × hourly buckets in `$DSH_HOME/quota-monitor/usage.json` (atomic write with a 2s debounce), surviving restarts and pruned by the **保留期**. Distinct from the in-memory **刷新历史**.
+_Avoid_: local cache, on-disk history, cloud stats
+
+**保留期 (Retention Window)**:
+How far back **本地用量数据** is kept (default 7 days, 1–90 configurable in the plugin settings); older hourly buckets are pruned on load and on every save.
+_Avoid_: history days, data range
 
 **刷新 (Refresh)**:
 Fetching current quota data; automatic polling on an interval plus a manual refresh action.

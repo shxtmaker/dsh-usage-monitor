@@ -15,6 +15,7 @@ DeepSeek Harness 插件：显示各供应商**可用周期限额**——sidebar 
 - **设置**：原生设置卡片（`settings.plugin.item` 槽位）+ 详情页内面板；每供应商 启用 / API Key（password 掩码）/ Base URL / 警告·临界阈值；全局轮询间隔；**测试连接**按钮
 - **调度**：默认 60s 轮询（10–3600 可配）；同供应商 in-flight 合并去重；失败指数退避（30s→1m→2m→4m→10m；401/403 → 30min）；手动刷新立即执行并重置计时器
 - **历史**：每供应商最近 50 条、全局 500 条（内存，重启即清）
+- **本地用量数据**：当日 token 消耗按「供应商 × 小时桶」落盘（`$DSH_HOME/quota-monitor/usage.json`，原子写、防抖 2s），重启保留；按**保留期**修剪（默认 7 天，1–90 可配）
 - **密钥**：DSH 原生 settings 命名空间 `quota-monitor`（`$DSH_HOME/settings.yaml`，热重载、原子写、`role('secret')` 脱敏）
 - **自动探测**：启动 / settings 热重载 / `llm/adapters-updated` / `credentials/reference-updated` 时探测 DSH LLM 注册表（`ctx.llm` 目录 + 存活路由）与 `llm-deepseek` / `llm-pi-ai` 配置节；命中支持路由（`deepseek-official`、pi-ai `deepseek` / `opencode-go` / `commandcode-goat` 及前缀变体）且 DSH user 层已配置/凭据库已存密钥 → 自动启用 + Base URL + **API Key 自动填入**（从 DSH 凭据库/环境变量拷贝进插件 settings，`role('secret')` 脱敏；仅当插件侧 Key 为空时填写）；用户手动填过 Key 或显式关闭的不覆盖；已探测但暂不支持的供应商（openrouter 等）仅在设置面板提示
 
@@ -69,5 +70,5 @@ node test/mock-dsh.mjs   # 宿主半：路由 / 事件折叠 / 设置热更新 /
 
 - 密钥**清除**需直接编辑 `$DSH_HOME/settings.yaml`（本版设置面板只支持留空不改）
 - OpenCode / Command Code 如果经由 llm-pi-ai 路由（`opencode-go`、`commandcode-goat` 等）接入 DSH → 可自动探测，也有「当日消耗量」与当前集流量过滤；独立 CLI 直连（不经 DSH 路由）的用法仍不可观测 → 恒候选、消耗显示 —；多日历史/趋势不在范围内
-- 刷新历史仅内存保存（落盘列入迷雾）；响应头速率限额余量、OpenRouter/Moonshot 供应商扩展为后续项
+- 刷新历史仅内存保存；多日历史/趋势图不在范围内（本地用量数据已保留小时桶，可作后续趋势数据源）；响应头速率限额余量、OpenRouter/Moonshot 供应商扩展为后续项
 - 阈值语义：百分比越大越紧（用量/限额）；余额类无限额概念，恒为正常态
