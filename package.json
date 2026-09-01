@@ -1,6 +1,6 @@
 {
   "name": "dsh-quota-monitor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "供应商可用周期限额监控：DSH sidebar 小组件 + 详情页，支持 DeepSeek 余额 / OpenCode 窗口与 allowance / Command Code 额度，含当日消耗量与当前供应商过滤；自动探测 DSH 已添加供应商并自动填入 API Key（密钥脱敏存储，手动 Key 不覆盖）。",
   "author": "shxtmaker <https://github.com/shxtmaker>",
   "license": "MIT",
@@ -36,9 +36,10 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-connection",
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
       ],
       "platform": "web"
     }

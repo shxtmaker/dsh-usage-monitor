@@ -1,6 +1,6 @@
 # dsh-quota-monitor（用量监控）
 
-DeepSeek Harness 插件：显示各供应商**可用周期限额**——sidebar 小组件 + 详情页，支持
+DeepSeek Harness 插件：显示各供应商**可用周期限额**——sidebar 脚部小组件 + 详情页，支持
 
 - **DeepSeek**：账户余额（`/user/balance`）
 - **OpenCode**：5h 滚动 / 周 / 月窗口用量（`/zen/go/v1/usage`）+ allowance 计量表（`/api/go/status`，OAuth + x-org-id）
@@ -10,7 +10,7 @@ DeepSeek Harness 插件：显示各供应商**可用周期限额**——sidebar 
 
 ## 功能
 
-- **小组件（sidebar）**：状态点 + 名称 + 百分比（余额类显示金额）+ 当日 token 消耗量 + 头部本日 token 总消耗；点击弹 popover（限额项/重置/错误/上次刷新）；只显示**当前供应商**（DSH 启用 ∩ 近期流量，「无 DSH 路由的供应商恒为候选」；只有真实 session/event 才算流量信号，冷启动未调用或近 24h 无任何流量时按启用清单兜底显示，兜底时标注「近 24h 无流量」，避免小组件「暂无供应商」）；**位置自适应**——插在侧栏底部按钮区上方（8px 间隙永不重叠），内容超高内部滚动，侧栏收起为窄栏时自动隐藏
+- **小组件（sidebar 脚部）**：**经 DSH 官方槽位 `sidebar.footer.action` 嵌入**侧边栏底部（设置行正上方），与其他脚部按钮/组件（remote-web-ui、cordis-panel 等）同处内容流、并排渲染，**不扫描/不劫持 DOM、不做 fixed 悬浮、不遮挡任何现有组件**；宽栏下为紧凑条（状态点 + 概览 + 今日 token 总消耗），点击展开 Popover（各供应商限额项/重置/错误/上次刷新）；**侧栏收起为 56px rail 时自动切换为图标态**，点击直接打开详情。只显示**当前供应商**（DSH 启用 ∩ 近期流量，「无 DSH 路由的供应商恒为候选」；只有真实 session/event 才算流量信号，冷启动未调用或近 24h 无任何流量时按启用清单兜底显示，兜底时标注「近 24h 无流量」）
 - **详情页**：供应商分栏（kanban 风），栏头状态胶囊 + 限额项卡片；刷新历史表格默认收起；刷新全部 / 设置入口
 - **设置**：原生设置卡片（`settings.plugin.item` 槽位）+ 详情页内面板；每供应商 启用 / API Key（password 掩码）/ Base URL / 警告·临界阈值；全局轮询间隔；**测试连接**按钮
 - **调度**：默认 60s 轮询（10–3600 可配）；同供应商 in-flight 合并去重；失败指数退避（30s→1m→2m→4m→10m；401/403 → 30min）；手动刷新立即执行并重置计时器
@@ -19,13 +19,26 @@ DeepSeek Harness 插件：显示各供应商**可用周期限额**——sidebar 
 - **密钥**：DSH 原生 settings 命名空间 `quota-monitor`（`$DSH_HOME/settings.yaml`，热重载、原子写、`role('secret')` 脱敏）
 - **自动探测**：启动 / settings 热重载 / `llm/adapters-updated` / `credentials/reference-updated` 时探测 DSH LLM 注册表（`ctx.llm` 目录 + 存活路由）与 `llm-deepseek` / `llm-pi-ai` 配置节；命中支持路由（`deepseek-official`、pi-ai `deepseek` / `opencode-go` / `commandcode-goat` 及前缀变体）且 DSH user 层已配置/凭据库已存密钥 → 自动启用 + Base URL + **API Key 自动填入**（从 DSH 凭据库/环境变量拷贝进插件 settings，`role('secret')` 脱敏；仅当插件侧 Key 为空时填写）；用户手动填过 Key 或显式关闭的不覆盖；已探测但暂不支持的供应商（openrouter 等）仅在设置面板提示
 
+## 客户端渲染契约（v0.2 重构）
+
+浏览器半 `lib/client.js` 不再以任何方式操作侧边栏 DOM，全部走 DSH 官方客户端注入面：
+
+| 槽位 | 注册 id/key | 内容 |
+|---|---|---|
+| `sidebar.footer.action`（list） | `id: quota-monitor` | 小组件主体：宽栏紧凑条 / rail 图标态；Popover 与弹层经 `createPortal` 挂 body |
+| `settings.plugin.item` | `key: quota-monitor` | 设置页「插件清单 → 用量监控」卡片，打开设置弹层 |
+
+- 依赖声明：`dsh.client.inject` 只列 boot graph 内真实存在的包（`dsh-client-locale` / `dsh-client-ui-sidebar` / `dsh-client-ui-settings` / `dsh-client-ui-settings-plugins`），不再引用 `dsh-client-runtime` 等图中不存在的模块。
+- 定位策略：Popover 采用官方「贴底展开」定位（`bottom` 对齐锚点条上沿 + 视口钳制），与 `dsh-client-ui-cordis` / `dsh-remote-web-ui` 的脚部弹层一致；详情/设置是居中 overlay，均为临时弹层，不常驻不遮挡。
+- rail 态：外壳传 `wide=false` 时小组件自动切换为图标按钮（打开详情），无需自建折叠逻辑。
+
 ## 结构
 
 ```
 lib/index.js      宿主半：settings 注册、轮询调度、当前供应商/当日消耗量折叠、/api 路由、自动探测接入
 lib/detect.js     自动探测 DSH 已添加供应商（ctx.llm 目录/存活路由 + 配置节 + 凭据解析）与自动填入补丁
 lib/providers.js  数据层：三种供应商取数方法（可独立复用）
-lib/client.js     客户端半：小组件 / 详情页 / 设置面板（纯 React.createElement，无构建）
+lib/client.js     客户端半：脚部槽位小组件 / Popover / 详情页 / 设置面板（纯 React.createElement，无构建）
 test/smoke.mjs    数据层冒烟（Mock fetch）
 test/detect.mjs   自动探测单元测试（目录/凭据/去重/无密钥）
 test/mock-dsh.mjs 宿主半集成冒烟（Mock ctx + fetch）
@@ -54,6 +67,7 @@ dsh --profile web --dump-config   # 应出现 quota-monitor 行
 ```
 
 装好后在 DSH 设置页（插件清单 → 用量监控卡片）配置各供应商密钥，或点小组件「详情 → 设置」。
+从 v0.1 升级：直接覆盖本目录文件后重启 web GUI 即可（客户端代码由宿主按 rev 重新下发，无残留旧挂载）。
 
 ## 测试
 

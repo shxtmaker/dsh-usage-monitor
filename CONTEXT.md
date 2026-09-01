@@ -32,7 +32,7 @@ The abstraction inherited from the upstream repo that gives every supplier the s
 _Avoid_: adapter layer, provider interface
 
 **小组件 (Widget)**:
-The compact, always-visible DSH GUI display showing each supplier's available quota — the plugin's primary surface.
+The compact, always-visible DSH GUI display showing each supplier's available quota — the plugin's primary surface. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `quota-monitor`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses.
 _Avoid_: panel, card
 
 **详情页 (Detail Page)**:
