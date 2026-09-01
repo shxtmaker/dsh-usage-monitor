@@ -1,4 +1,4 @@
-# dsh-quota-monitor（用量监控）
+# dsh-usage-monitor（用量监控）
 
 DeepSeek Harness 插件：显示各供应商**可用周期限额**——sidebar 脚部小组件 + 详情页，支持
 
