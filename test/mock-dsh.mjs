@@ -151,7 +151,7 @@ console.log("✓ 自动探测：6 个普通 Key 供应商自动启用 + 官方 b
 
 // ---- 路由表 ----
 const paths = ctx._routes.map((r) => r.path);
-assert.deepEqual(paths, ["/api/quota-monitor/state", "/api/quota-monitor/refresh", "/api/quota-monitor/test", "/api/quota-monitor/settings"]);
+assert.deepEqual(paths, ["/api/quota-monitor/state", "/api/quota-monitor/refresh", "/api/quota-monitor/test", "/api/quota-monitor/settings", "/api/quota-monitor/rescan"]);
 
 const call = async (path, body, headers = { origin: "" }, method = String(path).split("?")[0].endsWith("/state") ? "GET" : "POST") => {
   const route = ctx._routes.find((r) => r.path === String(path).split("?")[0]);
@@ -194,6 +194,17 @@ assert.equal(cc.state, "err");
 assert.deepEqual(s1.payload.detectedUnmapped.map((u) => u.route), ["openai"], "pi-ai 普通聊天 Key（openai）应进入 detectedUnmapped 并提示需 Admin Key");
 assert.match(s1.payload.detectedUnmapped[0].detail || "", /Admin Key/);
 assert.equal(s1.payload.suppliers.length, 13, "供应商注册表含 13 项（凭据类别 × 地域拆分）");
+// v1.1 已添加推导：探测到 → added（即使显式关闭也在主目录；仅阈值/BaseURL 改动不算）
+for (const id of ["deepseek", "opencode", "commandcode", "openrouter", "moonshot-cn", "zai-cn"]) {
+  const s = s1.payload.suppliers.find((x) => x.id === id);
+  assert.equal(s.added, true, `${id} 探测到 → added`);
+  assert.equal(s.addedReason, "detected", `${id} addedReason=detected`);
+}
+for (const id of ["openai-org", "anthropic-org", "openrouter-account"]) {
+  const s = s1.payload.suppliers.find((x) => x.id === id);
+  assert.equal(s.added, false, `${id} 未探测且未启用无密钥 → 不算已添加`);
+  assert.equal(s.addedReason, null, `${id} addedReason=null`);
+}
 const det = s1.payload.detect;
 assert.equal(det.error, null, "探测无异常");
 assert.deepEqual([...det.found].sort(), [
@@ -275,6 +286,26 @@ assert.equal(resolved.suppliers.commandcode.enabled, true);
 const s3 = await call("/api/quota-monitor/state");
 assert.equal(s3.payload.poll.intervalSeconds, 30);
 console.log("✓ settings 路由深合并生效（interval=30，commandcode 启用）");
+
+// ---- added 推导：仅启用（无探测无密钥）→ addedReason=enabled ----
+await call("/api/quota-monitor/settings", { suppliers: { "openai-org": { enabled: true } } });
+const sE = await call("/api/quota-monitor/state");
+const oiE = sE.payload.suppliers.find((x) => x.id === "openai-org");
+assert.equal(oiE.added, true, "仅启用（无密钥、未探测）→ 已添加");
+assert.equal(oiE.addedReason, "enabled");
+await call("/api/quota-monitor/settings", { suppliers: { "openai-org": { enabled: false } } });
+console.log("✓ added 推导：探测到→detected；仅启用→enabled；未触碰→不算");
+
+// ---- R2：POST /rescan 复用周期自动探测（幂等、尊重显式关闭）并返回 /state 载荷 ----
+const rsc = await call("/api/quota-monitor/rescan");
+assert.equal(rsc.status, 200);
+assert.equal(rsc.payload.ok, true);
+assert.equal(rsc.payload.suppliers.find((x) => x.id === "opencode").added, true, "opencode 仍被 DSH 探测 → 探测到即已添加（即使被用户显式关闭）");
+assert.equal(resolved.suppliers.opencode.enabled, false, "rescan 不得重新启用用户显式关闭的供应商");
+assert.ok(rsc.payload.detect.at, "rescan 后 detect.at 已刷新");
+assert.ok(rsc.payload.detect.found.includes("commandcode"));
+assert.equal((await call("/api/quota-monitor/rescan", null, {}, "GET")).status, 405, "rescan 仅接受 POST");
+console.log("✓ POST /rescan：单实例扫描 + 自动填入幂等 + 尊重显式关闭 + 返回 state 载荷");
 
 // ---- test 路由：401 → ok:false auth ----
 const t = await call("/api/quota-monitor/test", { supplier: "commandcode" });
