@@ -85,7 +85,7 @@ test/storage.mjs  本地用量数据存储单元测试
 ```bash
 # 1. 添加插件（link 安装，目录即本仓库；或 npm pack 出的 tgz 安装）
 dsh plugin --profile web add link:/run/media/lin-qingyue/AI\ Project/DeepSeek\ harness/插件开发/用量监控
-#   或 dsh plugin --profile web add ./dsh-quota-monitor-1.1.0.tgz
+#   或 dsh plugin --profile web add ./dsh-usage-monitor-1.1.0.tgz
 
 # 2. 重启 web GUI 使补丁生效（会中断当前会话）
 dsh --profile web
