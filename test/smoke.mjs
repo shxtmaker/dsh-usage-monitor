@@ -69,7 +69,12 @@ const ROUTES = [
   ["/alpha/whoami", (u) => true, { org: { id: "org_1" } }],
   ["/alpha/billing/credits", (u) => true, {
     credits: { planId: "individual-pro", monthlyCredits: 12.5 },
-    windowLimits: { fiveHour: { used: 2.0, cap: 10.0, resetAt: "2025-08-26T05:00:00Z" }, weekly: { used: 8.5, cap: 30.0, resetAt: "2025-09-01T00:00:00Z" } },
+    // 真实样本：窗口 resetAt 为 epoch-毫秒数字（上游夹具 FromUnixTimeMilliseconds 转录）；
+    // weekly 用 ISO 字符串覆盖另一容忍路径
+    windowLimits: {
+      fiveHour: { used: 2.0, cap: 10.0, resetAt: Date.UTC(2025, 7, 26, 5) },
+      weekly: { used: 8.5, cap: 30.0, resetAt: "2025-09-01T00:00:00Z" },
+    },
   }],
   ["/alpha/billing/subscriptions", (u) => true, { data: { planId: "individual-pro", status: "active", currentPeriodStart: "2025-08-01T00:00:00Z", currentPeriodEnd: "2025-09-01T00:00:00Z" } }],
   ["/alpha/usage/summary", (u) => true, { totalCost: 17.5 }],
@@ -162,13 +167,29 @@ assert.equal(oc.state, "warn");
 assert.equal(oc.entries.find((e) => e.name.startsWith("allowance")).remain, "$26.50");
 console.log("✓ opencode 窗口 + allowance:", oc.headline.pct);
 
-// Command Code：窗口 + 月额度（保留兼容来源）
+// Command Code：窗口 + 月额度（保留兼容来源；重置时间补齐：epoch-ms / ISO / 诚实缺省）
 const cc = await PROVIDERS.commandcode.query(cfg());
 assert.equal(cc.entries.length, 3);
 assert.equal(cc.state, "ok");
 const monthly = cc.entries.find((e) => e.name.startsWith("月额度"));
 assert.equal(monthly.remain, "$12.50");
-console.log("✓ commandcode:", cc.entries.map((e) => `${e.name}:${e.pct}%`).join(" | "));
+for (const e of cc.entries) {
+  assert.notEqual(e.reset, "—", `${e.name} 应带重置时间`);
+  assert.match(e.reset, /重置$/);
+  assert.equal(e.note.includes("未提供重置时刻"), false);
+}
+assert.match(monthly.note, /订阅 active/);
+console.log("✓ commandcode:", cc.entries.map((e) => `${e.name}:${e.pct}% (${e.reset})`).join(" | "));
+
+// 窗口缺 resetAt 的真实缺省路径：如实标注「未提供重置时刻」，不伪造时刻
+const ccRoute = ROUTES.find(([p]) => p === "/alpha/billing/credits");
+ccRoute[2].windowLimits = { fiveHour: { used: 2.0, cap: 10.0 }, weekly: { used: 8.5, cap: 30.0 } };
+const ccNoReset = await PROVIDERS.commandcode.query(cfg());
+for (const e of ccNoReset.entries.filter((x) => x.kind === "win" && !x.name.startsWith("月额度"))) {
+  assert.equal(e.reset, "—");
+  assert.equal(e.note, "未提供重置时刻");
+}
+console.log("✓ commandcode 缺 resetAt → 诚实标注:", ccNoReset.entries.filter((e) => e.name.startsWith("5h")).map((e) => `${e.name}:${e.note}`).join(" | "));
 
 // 端点校验：非官方主机/非默认端口/路径越界 → 不发请求
 for (const [id, badBase] of [
