@@ -19,7 +19,8 @@ const file = usageFilePath(dir);
 
 // ---- 时间 key ----
 // 夹具相对真实时钟生成（保留期按 Date.now() 修剪，避免硬编码日期过期）
-const now = new Date(Date.now() - (Date.now() % 3_600_000)); // 对齐到整点，本地时间
+const nowMs = Date.now();
+const now = new Date(nowMs - (nowMs % 3_600_000)); // 对齐到整点，本地时间
 const hour = now.getHours();
 const keyNow = hourKeyOf(now);
 assert.equal(dayKeyOf(now), keyNow.slice(0, 8));

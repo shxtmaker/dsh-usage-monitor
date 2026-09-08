@@ -1,7 +1,7 @@
 {
   "name": "dsh-quota-monitor",
-  "version": "0.3.0",
-  "description": "供应商可用周期限额监控：DSH sidebar 小组件 + 详情页，覆盖 DeepSeek 余额（多币种）/ OpenRouter 普通 Key 额度与今日费用及 Management credits / OpenAI·Anthropic 组织 AdminKey 用量与费用 / Moonshot 国内·国际余额 / Z.ai·智谱 Coding Plan / MiniMax Token Plan / OpenCode·Command Code 兼容来源；自动识别 DSH harness 各普通 API Key 并自动填入（按凭据类别匹配，Admin/Management 手动配置），密钥脱敏存储。",
+  "version": "0.4.0",
+  "description": "供应商可用周期限额监控：DSH sidebar 小组件 + 详情页；小组件宽栏主显示「最近一次 LLM 调用正在使用的模型供应商」（在用 · 供应商 · 模型），限额/余额明细由弹层与详情页承载，覆盖 DeepSeek 余额（多币种）/ OpenRouter 普通 Key 额度与今日费用及 Management credits / OpenAI·Anthropic 组织 AdminKey 用量与费用 / Moonshot 国内·国际余额 / Z.ai·智谱 Coding Plan / MiniMax Token Plan / OpenCode·Command Code 兼容来源；自动识别 DSH harness 各普通 API Key 并自动填入（按凭据类别匹配，Admin/Management 手动配置），密钥脱敏存储。",
   "author": "shxtmaker <https://github.com/shxtmaker>",
   "license": "MIT",
   "homepage": "https://github.com/shxtmaker/dsh-usage-monitor",

@@ -1,6 +1,6 @@
 # Supplier Quota Monitor (用量监控)
 
-A DeepSeek Harness (DSH) plugin that displays each LLM supplier's available period quota / balance / reported usage & cost. Since v0.3 the data layer tracks Token-Consumption-Monitoring `main` (v1.3.x) [docs/query-coverage.md](http://192.168.3.100:3300/lqy/Token-Consumption-Monitoring/src/branch/main/docs/query-coverage.md): supplier registry is split by **凭据类别 × 地域** (13 entries, metadata-driven), with auto-identification of every plain API key found in the DSH harness. This context covers the plugin's domain: suppliers, credentials classes, quotas, and the widget that shows them.
+A DeepSeek Harness (DSH) plugin that displays each LLM supplier's available period quota / balance / reported usage & cost. Since v0.3 the data layer tracks Token-Consumption-Monitoring `main` (v1.3.x) [docs/query-coverage.md](http://192.168.3.100:3300/lqy/Token-Consumption-Monitoring/src/branch/main/docs/query-coverage.md): supplier registry is split by **凭据类别 × 地域** (13 entries, metadata-driven), with auto-identification of every plain API key found in the DSH harness. This context covers the plugin's domain: suppliers, credentials classes, quotas, the sidebar strip's current-in-use supplier display, and the widget that shows them.
 
 ## Language
 
@@ -40,7 +40,7 @@ v0.3 auto-detect: every plain API key present in the DSH seam (`llm-deepseek` se
 _Avoid_: guessing by key prefix (upstream forbids it)
 
 **小组件 (Widget)**:
-The compact, always-visible DSH GUI display showing each supplier's available quota — the plugin's primary surface. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `quota-monitor`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses.
+The compact, always-visible DSH GUI display showing which model supplier the harness is using right now. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `quota-monitor`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses. The wide strip's main display is the **在用供应商** (supplier · model of the latest real call); its Popover lists **当前供应商** quota entries.
 _Avoid_: panel, card
 
 **详情页 (Detail Page)**:
@@ -50,6 +50,10 @@ _Avoid_: detail view, expanded card
 **当前供应商 (Current Supplier)**:
 A supplier the harness is actually using now — enabled in the DSH configuration and (when traffic data is observable) with recent LLM calls; the widget filters to these. Falls back to the enabled list when traffic isn't observable.
 _Avoid_: active provider, used supplier
+
+**在用供应商 (Active Supplier)**:
+The supplier of the **most recent** real LLM call observed from `session/event`, carrying the model name of that call; this is what the wide sidebar compact strip shows by default (「在用 DeepSeek · deepseek-chat」+ relative time). Before any call it shows "暂无调用"; it is independent of the enabled/current filtering that governs the popover list.
+_Avoid_: active provider, 当前路由供应商, 正在调用的 provider
 
 **当日消耗量 (Daily Usage)**:
 Token consumption attributed per supplier from DSH session events, aggregated over the current calendar day (resets at 00:00); suppliers without a DSH route show "—". Backed by the plugin's **本地用量数据** so it survives restarts.

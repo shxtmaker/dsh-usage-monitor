@@ -28,7 +28,7 @@ Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登
 
 ## 功能
 
-- **小组件（sidebar 脚部）**：**经 DSH 官方槽位 `sidebar.footer.action` 嵌入**侧边栏底部，与其他脚部按钮/组件同处内容流、并排渲染，**不扫描/不劫持 DOM、不做 fixed 悬浮**；宽栏紧凑条（状态点 + 概览 + 今日 token 总消耗）点击展开 Popover；rail 窄栏自动切换图标态。只显示**当前供应商**（DSH 启用 ∩ 近期流量；组织账务等无 DSH 路由的供应商恒为候选；冷启动或近 24h 无流量时按启用清单兜底并标注）
+- **小组件（sidebar 脚部）**：**经 DSH 官方槽位 `sidebar.footer.action` 嵌入**侧边栏底部，与其他脚部按钮/组件同处内容流、并排渲染，**不扫描/不劫持 DOM、不做 fixed 悬浮**；宽栏紧凑条主显示**当前正在使用的模型供应商**——取最近一次真实 LLM 调用命中的供应商 + 模型名（「在用 DeepSeek · deepseek-chat」，附相对时间；尚无调用时显示「暂无调用」），点击展开 Popover 查看各供应商限额；rail 窄栏自动切换图标态。弹层列表只显示**当前供应商**（DSH 启用 ∩ 近期流量；组织账务等无 DSH 路由的供应商恒为候选；冷启动或近 24h 无流量时按启用清单兜底并标注）
 - **详情页**：供应商分栏（kanban 风），栏头状态胶囊 + 限额/用量/费用条目卡片；刷新历史默认收起；刷新全部 / 设置入口
 - **设置**：原生设置卡片 + 详情页内面板；配置界面参照上游页面模型改为「**供应商页目录 → 每个供应商独立配置页**」——目录行内可直接启停/测试连接，点「打开配置」进入该供应商单页（凭据类别徽标、按 needs 动态渲染的密钥字段、Base URL/警告·临界阈值、测试连接、保存），全局轮询间隔/保留期单独一组；OpenCode 页含 allowance Token 与 org id
 - **调度**：默认 60s 轮询（10–3600 可配）；同供应商 in-flight 合并去重；失败指数退避（30s→1m→2m→4m→10m；401/403 → 30min）；手动刷新立即执行
@@ -43,7 +43,7 @@ Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登
 
 | 槽位 | 注册 id/key | 内容 |
 |---|---|---|
-| `sidebar.footer.action`（list） | `id: quota-monitor` | 小组件主体：宽栏紧凑条 / rail 图标态；Popover 与弹层经 `createPortal` 挂 body |
+| `sidebar.footer.action`（list） | `id: quota-monitor` | 小组件主体：宽栏紧凑条（「在用」最近一次调用的 供应商 · 模型 + 相对时间）/ rail 图标态；Popover 与弹层经 `createPortal` 挂 body |
 | `settings.plugin.item` | `key: quota-monitor` | 设置页「插件清单 → 用量监控」卡片 |
 
 依赖声明只列 boot graph 内真实存在的包；Popover 采用官方「贴底展开」定位；详情/设置是居中 overlay。客户端代码由宿主按 rev 重新下发，覆盖文件后刷新浏览器即可生效（无需重新构建插件）。

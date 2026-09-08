@@ -195,6 +195,7 @@ assert.deepEqual([...det.found].sort(), [
 ], "探测命中六家普通 Key 供应商");
 assert.ok(det.candidates.some((c) => c.route === "opencode-go" && c.keySource === "file"));
 assert.equal(det.credentialsPresent, true);
+assert.equal(s1.payload.active, null, "尚未观测到任何 LLM 调用 → active=null（紧凑条显示暂无调用）");
 const orMeta = s1.payload.suppliers.find((x) => x.id === "openrouter");
 assert.equal(orMeta.autoDetected, true);
 assert.equal(orMeta.meta.credentialClass, "api-key");
@@ -212,11 +213,16 @@ for (const id of ["deepseek", "opencode", "commandcode", "openrouter", "moonshot
   assert.equal(sX.payload.suppliers.find((s) => s.id === id).current, true, id + " 应兜底按启用清单显示");
 }
 console.log("✓ 流量兜底：无近期可用流量时小组件按启用清单显示（trafficStale=true）");
+assert.equal(sX.payload.active, null, "未映射路由（unknown-route-xyz）不产生 active");
 emit({ type: "assistant/message", data: { source: { provider: "deepseek-official", model: "deepseek-v3" }, usage: { uncachedInputTokens: 1000, outputTokens: 500 } } });
 const s2 = await call("/api/quota-monitor/state");
 assert.equal(s2.payload.suppliers.find((s) => s.id === "deepseek").todayTokens, 1500);
 assert.equal(s2.payload.suppliers.find((s) => s.id === "deepseek").current, true);
-console.log("✓ session/event 折叠：当日 1500 tokens");
+assert.equal(s2.payload.active?.supplierId, "deepseek", "最近一次调用 → 小组件显示 DeepSeek");
+assert.equal(s2.payload.active?.name, "DeepSeek");
+assert.equal(s2.payload.active?.model, "deepseek-v3", "active 携带最近一次调用的模型名");
+assert.equal(s2.payload.active?.fresh, true);
+console.log("✓ session/event 折叠：当日 1500 tokens；active=DeepSeek · deepseek-v3");
 
 // ---- 真实 DSH 载荷（request/header + usage chunk + assistant/message）----
 // 用户报告「小组件显示 近24h 无流量·按启用清单显示，实际 token 有消耗」：
@@ -233,7 +239,10 @@ assert.equal(cc2.todayTokens, 400, "同一 step 的 usage 应替换而非重复�
 assert.equal(s4.payload.traffic.scheme, 2, "state 应带流量诊断标记（scheme=2）");
 const ccRoute = s4.payload.traffic.routes.find((r) => r.route === "commandcode-goat");
 assert.ok(ccRoute && ccRoute.supplier === "commandcode", "诊断 routes 应反映 commandcode-goat → commandcode");
-console.log("✓ 真实 DSH 事件载荷：header.config / message.source.provider / inputTokens 折叠正确");
+assert.equal(s4.payload.active?.supplierId, "commandcode", "多点真实载荷后 active 应切到最近一次调用（commandcode）");
+assert.equal(s4.payload.active?.model, "cc-model", "active 模型名随最近一次调用更新");
+assert.ok(s4.payload.active?.at > s2.payload.active?.at, "active.at 应晚于 DeepSeek 那次调用");
+console.log("✓ 真实 DSH 事件载荷：header.config / message.source.provider / inputTokens 折叠正确；active 跟随最近调用");
 
 // ---- 本地用量数据落盘（防抖 2s 后落盘，重载回读一致） ----
 await new Promise((r) => setTimeout(r, 2500)); // 等防抖写入
