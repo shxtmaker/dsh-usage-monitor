@@ -18,16 +18,18 @@ const dir = mkdtempSync(join(tmpdir(), "qm-storage-"));
 const file = usageFilePath(dir);
 
 // ---- 时间 key ----
-const now = new Date(2026, 7, 26, 19, 30); // 2026-08-26 19:30 本地
-assert.equal(hourKeyOf(now), "2026082619");
-assert.equal(dayKeyOf(now), "20260826");
-assert.equal(hourTimeMs("2026082619"), new Date(2026, 7, 26, 19).getTime());
+// 夹具相对真实时钟生成（保留期按 Date.now() 修剪，避免硬编码日期过期）
+const now = new Date(Date.now() - (Date.now() % 3_600_000)); // 对齐到整点，本地时间
+const hour = now.getHours();
+const keyNow = hourKeyOf(now);
+assert.equal(dayKeyOf(now), keyNow.slice(0, 8));
+assert.equal(hourTimeMs(keyNow), now.getTime());
 assert.equal(hourTimeMs("not-a-key"), 0);
-console.log("✓ 小时桶 key：YYYYMMDDHH / 日前缀 / 解析");
+console.log(`✓ 小时桶 key：${keyNow}（YYYYMMDDHH / 日前缀 / 解析）`);
 
 // ---- 保留期修剪 ----
-const oldKey = hourKeyOf(new Date(2026, 7, 18, 10)); // 8 天前
-const recentKey = hourKeyOf(new Date(2026, 7, 26, 18));
+const oldKey = hourKeyOf(new Date(now.getTime() - 8 * 24 * 3600_000)); // 8 天前
+const recentKey = hourKeyOf(new Date(now.getTime() - 3600_000)); // 1 小时前
 const buckets = {
   deepseek: { [oldKey]: 999, [recentKey]: 100, bad: 5 },
   opencode: { [recentKey]: 50, zeroed: 0 },

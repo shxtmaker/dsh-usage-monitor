@@ -1,6 +1,6 @@
 # Supplier Quota Monitor (用量监控)
 
-A DeepSeek Harness (DSH) plugin that displays each LLM supplier's available period quota, adapted from the Token-Consumption-Monitoring project's `refactor/unified-query-methods` branch. This context covers the plugin's domain: suppliers, quotas, and the widget that shows them.
+A DeepSeek Harness (DSH) plugin that displays each LLM supplier's available period quota / balance / reported usage & cost. Since v0.3 the data layer tracks Token-Consumption-Monitoring `main` (v1.3.x) [docs/query-coverage.md](http://192.168.3.100:3300/lqy/Token-Consumption-Monitoring/src/branch/main/docs/query-coverage.md): supplier registry is split by **凭据类别 × 地域** (13 entries, metadata-driven), with auto-identification of every plain API key found in the DSH harness. This context covers the plugin's domain: suppliers, credentials classes, quotas, and the widget that shows them.
 
 ## Language
 
@@ -28,8 +28,16 @@ Per-window RPM/TPM or per-day request limits, usually reported via response head
 _Avoid_: throttle, 限流 (verb)
 
 **统一查询方法 (Unified Query Methods)**:
-The abstraction inherited from the upstream repo that gives every supplier the same query interface; the plugin's data layer is built on it.
+The abstraction inherited from the upstream repo that gives every supplier the same query interface; the plugin's data layer is built on it. The port only keeps pure-HTTP methods with strict official host/base-path validation; Windows-only methods (WebView2 console, local SQLite, local Codex CLI login) are dropped.
 _Avoid_: adapter layer, provider interface
+
+**凭据类别 (Credential Class)**:
+What kind of secret a supplier page needs — 普通 API Key (chat key also queryable for the supplier's own balance/plan windows), 组织 Admin Key (OpenAI/Anthropic org usage & cost), Management Key (OpenRouter account credits). Classes never substitute for one another; the auto-detect layer maps plain DSH chat keys only to api-key-class suppliers.
+_Avoid_: key type dropdown, credential kind
+
+**各 API key 自动识别 (Auto-Identify Every API Key)**:
+v0.3 auto-detect: every plain API key present in the DSH seam (`llm-deepseek` section + `llm-pi-ai.providers` dictionary, resolved via `ctx.credentials` then `process.env`) is attributed to its supplier by route name (exact/prefix) with an official-host fallback, then enabled with official Base URL + key copy. Admin/Management suppliers are never auto-filled from chat keys — the settings UI marks them "需手动填写"; OpenAI/Anthropic chat routes are detected only to surface that hint.
+_Avoid_: guessing by key prefix (upstream forbids it)
 
 **小组件 (Widget)**:
 The compact, always-visible DSH GUI display showing each supplier's available quota — the plugin's primary surface. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `quota-monitor`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses.
@@ -60,5 +68,9 @@ Fetching current quota data; automatic polling on an interval plus a manual refr
 _Avoid_: sync, update (verb)
 
 **自动探测 (Auto-detect)**:
-The feature that discovers suppliers already added in the DSH harness (via `ctx.llm` registry and `llm-deepseek`/`llm-pi-ai` settings sections) and auto-fills the plugin's settings for supported routes — enabling, Base URL, and the **API key itself** (copied once from DSH's credential seam into the plugin's secret-role settings field; a user-supplied key is never overwritten).
+The feature that discovers suppliers already added in the DSH harness (via `ctx.llm` registry and `llm-deepseek`/`llm-pi-ai` settings sections) and auto-fills the plugin's settings for supported routes — enabling, Base URL (adopted only when the DSH route address passes the supplier's official host/path whitelist), and the **API key itself** (copied once from DSH's credential seam into the plugin's secret-role settings field; a user-supplied key is never overwritten; an explicitly disabled supplier is never re-enabled).
 _Avoid_: auto-config, provider discovery
+
+**官方查询覆盖 (Official Query Coverage)**:
+The supplier/endpoint matrix ported from upstream docs/query-coverage.md: DeepSeek multi-currency balance, OpenRouter key quota + daily cost, Moonshot cn/intl balance, Z.ai/智谱 Coding Plan windows, MiniMax Token Plan windows (explicit remaining percent only), OpenAI/Anthropic org usage & cost for the last completed UTC day; OpenCode/Command Code remain private-compat sources. Coverage boundaries (no invented reset times/weekly windows/absolute token counts) carry over.
+_Avoid_: adapters, endpoints table

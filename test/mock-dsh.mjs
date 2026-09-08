@@ -14,6 +14,7 @@ const BACKING = {
     deepseek: { enabled: false, apiKey: "", baseUrl: "https://api.deepseek.com", warnPct: 80, critPct: 95 },
     opencode: { enabled: false, apiKey: "", allowanceToken: "", baseUrl: "https://opencode.ai", warnPct: 80, critPct: 95 },
     commandcode: { enabled: false, apiKey: "", baseUrl: "https://api.commandcode.ai", warnPct: 80, critPct: 95 },
+    // 其余供应商无缺省项 → runtime 按注册表默认（enabled=false）运行，自动探测到才填入
   },
   intervalSeconds: 60,
   trafficWindowHours: 24,
@@ -41,6 +42,9 @@ const HARNESS = {
       "opencode-go": { apiKeyEnv: "OPENCODE_GO_API_KEY" },
       "commandcode-goat": { apiKeyEnv: "COMMANDCODE_GOAT_API_KEY", baseURL: "https://api.commandcode.ai/provider/v1" },
       openrouter: { apiKeyEnv: "OPENROUTER_API_KEY", baseURL: "https://openrouter.ai/api/v1" },
+      "moonshotai-cn": { apiKeyEnv: "MOONSHOT_CN_API_KEY", baseURL: "https://api.moonshot.cn/v1" },
+      "zai-coding-cn": { apiKeyEnv: "ZAI_CODING_CN_API_KEY", baseURL: "https://open.bigmodel.cn/api/anthropic" },
+      openai: { apiKeyEnv: "OPENAI_API_KEY", baseURL: "https://api.openai.com/v1" }, // 普通聊天 Key → Admin 供应商不套用
     },
   },
 };
@@ -51,6 +55,9 @@ const harnessUser = {
       "opencode-go": { apiKeyEnv: "OPENCODE_GO_API_KEY" },
       "commandcode-goat": { apiKeyEnv: "COMMANDCODE_GOAT_API_KEY", baseURL: "https://api.commandcode.ai/provider/v1" },
       openrouter: { apiKeyEnv: "OPENROUTER_API_KEY", baseURL: "https://openrouter.ai/api/v1" },
+      "moonshotai-cn": { apiKeyEnv: "MOONSHOT_CN_API_KEY", baseURL: "https://api.moonshot.cn/v1" },
+      "zai-coding-cn": { apiKeyEnv: "ZAI_CODING_CN_API_KEY", baseURL: "https://open.bigmodel.cn/api/anthropic" },
+      openai: { apiKeyEnv: "OPENAI_API_KEY", baseURL: "https://api.openai.com/v1" },
     },
   },
 };
@@ -116,7 +123,7 @@ await new Promise((r) => setTimeout(r, 400)); // 首轮 tick + 自动探测填�
 // 模拟真实 DSH 启动时派发 llm/adapters-updated（拓扑变更；不是流量观测信号）
 for (const cb of ctx._events["llm/adapters-updated"] ?? []) cb();
 
-// ---- 自动探测：harness 里已添加的三家供应商都被自动填入 ----
+// ---- 自动探测：harness 里已添加的普通 Key 供应商全部自动填入 ----
 assert.equal(resolved.suppliers.deepseek.enabled, true, "凭据库有 DEEPSEEK_API_KEY → 自动启用 deepseek");
 assert.equal(resolved.suppliers.deepseek.autoSource, "llm-deepseek");
 assert.equal(resolved.suppliers.opencode.enabled, true, "pi-ai opencode-go → 自动启用 opencode");
@@ -125,14 +132,22 @@ assert.equal(resolved.suppliers.opencode.autoApiKeyEnv, "OPENCODE_GO_API_KEY");
 assert.equal(resolved.suppliers.commandcode.enabled, true, "pi-ai commandcode-goat → 自动启用 commandcode");
 assert.equal(resolved.suppliers.commandcode.autoSource, "llm-pi-ai");
 assert.equal(resolved.suppliers.commandcode.autoApiKeyEnv, "COMMANDCODE_GOAT_API_KEY");
-assert.equal(resolved.suppliers.commandcode.baseUrl, "https://api.commandcode.ai/provider/v1", "Base URL 跟随 DSH");
+assert.equal(resolved.suppliers.commandcode.baseUrl, "https://api.commandcode.ai/provider/v1", "Base URL 跟随 DSH（兼容网关路径）");
+assert.equal(resolved.suppliers.openrouter.enabled, true, "pi-ai openrouter → 自动启用 openrouter（普通 Key 额度/费用）");
+assert.equal(resolved.suppliers["moonshot-cn"].enabled, true, "moonshotai-cn → 自动启用 moonshot-cn（国内余额）");
+assert.equal(resolved.suppliers["moonshot-cn"].baseUrl, "https://api.moonshot.cn/v1");
+assert.equal(resolved.suppliers["zai-cn"].enabled, true, "zai-coding-cn → 自动启用 zai-cn（智谱国内 Coding Plan）");
+assert.equal(resolved.suppliers["openai-org"], undefined, "OpenAI 普通聊天 Key 绝不自动启用 openai-org（需 Admin Key）");
 assert.equal(resolved.suppliers.deepseek.apiKey, "file-sk-DEEPSEEK_API_KEY", "API Key 本体自动填入插件 settings");
 assert.equal(resolved.suppliers.opencode.apiKey, "file-sk-OPENCODE_GO_API_KEY");
 assert.equal(resolved.suppliers.commandcode.apiKey, "file-sk-COMMANDCODE_GOAT_API_KEY");
+assert.equal(resolved.suppliers.openrouter.apiKey, "file-sk-OPENROUTER_API_KEY");
+assert.equal(resolved.suppliers["moonshot-cn"].apiKey, "file-sk-MOONSHOT_CN_API_KEY");
+assert.equal(resolved.suppliers["zai-cn"].apiKey, "file-sk-ZAI_CODING_CN_API_KEY");
 const dsCall = calls.find((c) => c.url.includes("user/balance"));
 assert.ok(dsCall, "自动填入后应发起余额查询");
 assert.equal(dsCall.auth, "Bearer file-sk-DEEPSEEK_API_KEY", "取数使用的是自动填入的密钥（与 DSH 凭据库一致）");
-console.log("✓ 自动探测：deepseek/opencode/commandcode 全部自动启用 + baseUrl + API Key 自动填入");
+console.log("✓ 自动探测：6 个普通 Key 供应商自动启用 + 官方 baseUrl + API Key 自动填入；Admin 不套用");
 
 // ---- 路由表 ----
 const paths = ctx._routes.map((r) => r.path);
@@ -170,20 +185,30 @@ assert.equal(cc.autoDetected, true);
 assert.equal(cc.keySet, true);
 assert.equal(cc.autoEnvName, "COMMANDCODE_GOAT_API_KEY");
 assert.equal(cc.state, "err");
-assert.deepEqual(s1.payload.detectedUnmapped.map((u) => u.route), ["openrouter"], "pi-ai 已添加但未支持的路由应进入 detectedUnmapped");
+assert.deepEqual(s1.payload.detectedUnmapped.map((u) => u.route), ["openai"], "pi-ai 普通聊天 Key（openai）应进入 detectedUnmapped 并提示需 Admin Key");
+assert.match(s1.payload.detectedUnmapped[0].detail || "", /Admin Key/);
+assert.equal(s1.payload.suppliers.length, 13, "供应商注册表含 13 项（凭据类别 × 地域拆分）");
 const det = s1.payload.detect;
 assert.equal(det.error, null, "探测无异常");
-assert.deepEqual([...det.found].sort(), ["commandcode", "deepseek", "opencode"], "探测命中三家供应商");
+assert.deepEqual([...det.found].sort(), [
+  "commandcode", "deepseek", "moonshot-cn", "opencode", "openrouter", "zai-cn",
+], "探测命中六家普通 Key 供应商");
 assert.ok(det.candidates.some((c) => c.route === "opencode-go" && c.keySource === "file"));
 assert.equal(det.credentialsPresent, true);
-console.log("✓ state：deepseek ok（autoKeySource=file）、opencode/commandcode 自动接入、detectedUnmapped=[openrouter]、detect 诊断正常");
+const orMeta = s1.payload.suppliers.find((x) => x.id === "openrouter");
+assert.equal(orMeta.autoDetected, true);
+assert.equal(orMeta.meta.credentialClass, "api-key");
+assert.deepEqual(orMeta.meta.needs.map((n) => n.key), ["apiKey"]);
+const oiMeta = s1.payload.suppliers.find((x) => x.id === "openai-org");
+assert.equal(oiMeta.meta.credentialClass, "admin-key", "Admin 供应商带凭据类别元数据供客户端提示手动配置");
+console.log("✓ state：deepseek ok、5 家自动接入、detectedUnmapped=[openai]（Admin 提示）、供应商 meta/needs 下发");
 
 // ---- 流量兜底（用户报告「小组件信息消失」）：有事件但无任何可用近期流量 → 按启用清单显示 ----
 const emit = (e) => { for (const cb of ctx._events["session/event"]) cb(null, e); };
 emit({ type: "assistant/message", data: { source: { provider: "unknown-route-xyz", model: "m" }, usage: { uncachedInputTokens: 1, outputTokens: 1 } } });
 const sX = await call("/api/quota-monitor/state");
 assert.equal(sX.payload.trafficStale, true, "无近期可用流量时应标记 trafficStale");
-for (const id of ["deepseek", "opencode", "commandcode"]) {
+for (const id of ["deepseek", "opencode", "commandcode", "openrouter", "moonshot-cn", "zai-cn"]) {
   assert.equal(sX.payload.suppliers.find((s) => s.id === id).current, true, id + " 应兜底按启用清单显示");
 }
 console.log("✓ 流量兜底：无近期可用流量时小组件按启用清单显示（trafficStale=true）");
