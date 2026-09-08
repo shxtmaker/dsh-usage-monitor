@@ -153,15 +153,21 @@ console.log("✓ 自动探测：6 个普通 Key 供应商自动启用 + 官方 b
 const paths = ctx._routes.map((r) => r.path);
 assert.deepEqual(paths, ["/api/quota-monitor/state", "/api/quota-monitor/refresh", "/api/quota-monitor/test", "/api/quota-monitor/settings"]);
 
-const call = async (path, body) => {
+const call = async (path, body, headers = { origin: "" }, method = String(path).split("?")[0].endsWith("/state") ? "GET" : "POST") => {
   const route = ctx._routes.find((r) => r.path === String(path).split("?")[0]);
   let status = 0;
   let payload = null;
   const res = { writeHead: (s) => { status = s; }, end: (d) => { payload = JSON.parse(d); } };
-  const req = { url: path, headers: { origin: "" }, on: (ev, cb) => { if (ev === "data") { if (body) cb(JSON.stringify(body)); } if (ev === "end") cb(); } };
+  const req = { url: path, method, headers, on: (ev, cb) => { if (ev === "data") { if (body) cb(JSON.stringify(body)); } if (ev === "end") cb(); } };
   await route.handler(req, res);
   return { status, payload };
 };
+
+// ---- HTTP method and origin contract ----
+assert.equal((await call("/api/quota-monitor/refresh", null, {}, "GET")).status, 405);
+assert.equal((await call("/api/quota-monitor/state", null, { origin: "http://localhost:3001", host: "localhost:3000" })).status, 403);
+assert.equal((await call("/api/quota-monitor/state", null, { origin: "http://[::1]:3000", host: "[::1]:3000" })).status, 200);
+assert.equal((await call("/api/quota-monitor/test", { supplier: "toString" })).status, 400);
 
 // ---- state ----
 const s1 = await call("/api/quota-monitor/state");
@@ -241,7 +247,7 @@ const ccRoute = s4.payload.traffic.routes.find((r) => r.route === "commandcode-g
 assert.ok(ccRoute && ccRoute.supplier === "commandcode", "诊断 routes 应反映 commandcode-goat → commandcode");
 assert.equal(s4.payload.active?.supplierId, "commandcode", "多点真实载荷后 active 应切到最近一次调用（commandcode）");
 assert.equal(s4.payload.active?.model, "cc-model", "active 模型名随最近一次调用更新");
-assert.ok(s4.payload.active?.at > s2.payload.active?.at, "active.at 应晚于 DeepSeek 那次调用");
+assert.ok(s4.payload.active?.at >= s2.payload.active?.at, "同毫秒事件允许相同时间戳，供应商选择由事件序号决定");
 console.log("✓ 真实 DSH 事件载荷：header.config / message.source.provider / inputTokens 折叠正确；active 跟随最近调用");
 
 // ---- 本地用量数据落盘（防抖 2s 后落盘，重载回读一致） ----
@@ -264,6 +270,7 @@ console.log("✓ 用户显式关闭 → 自动探测尊重关闭");
 // ---- settings 热更新 ----
 await call("/api/quota-monitor/settings", { intervalSeconds: 30, suppliers: { commandcode: { enabled: true, apiKey: "sk-cc" }, deepseek: { enabled: true, apiKey: "" } } });
 assert.equal(resolved.intervalSeconds, 30);
+assert.equal(resolved.suppliers.deepseek.apiKey, "file-sk-DEEPSEEK_API_KEY", "空白密钥补丁保留已存凭据");
 assert.equal(resolved.suppliers.commandcode.enabled, true);
 const s3 = await call("/api/quota-monitor/state");
 assert.equal(s3.payload.poll.intervalSeconds, 30);

@@ -1,5 +1,7 @@
 # dsh-usage-monitor（用量监控）
 
+当前版本：**v1.0.0**。
+
 DeepSeek Harness 插件：显示各供应商**可用周期限额 / 余额 / 报告用量费用**——sidebar 脚部小组件 + 详情页。
 
 查询覆盖随 [Token-Consumption-Monitoring](http://192.168.3.100:3300/lqy/Token-Consumption-Monitoring)（`main`，v1.3.x）的
@@ -54,6 +56,8 @@ Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登
 lib/index.js      宿主半：settings 注册（schema 按供应商 needs 生成）、轮询调度、当前供应商/当日消耗量折叠、/api 路由、自动探测接入
 lib/detect.js     DSH 路由→供应商识别（凭据类别×地域、官方主机/路径判定、Admin 不套用）与自动填入补丁
 lib/providers.js  数据层：供应商注册表（13 项，元数据驱动 needs/baseUrl/官方端点白名单）+ 全部查询方法
+lib/scheduler.js  查询调度、失败退避、并发合并与配置版本失效
+lib/usage.js      会话步骤用量替换记账（跨小时保留首次报告小时）
 lib/storage.js    本地用量数据（小时桶、保留期、原子写）
 lib/client.js     客户端半：脚部槽位小组件（sessions.list 跟随当前显示页）/ Popover / 详情页 / 设置面板（按 needs 动态渲染）
 test/smoke.mjs    数据层冒烟（Mock fetch：全部官方方法 + 端点校验 + 多币种/分页）
@@ -101,3 +105,21 @@ node test/storage.mjs    # 本地用量数据存储
 - Codex（本机 CLI 登录）不注册；OpenCode / Command Code 独立 CLI 直连（不经 DSH 路由）的用法仍不可观测 → 恒候选、当日消耗显示 —
 - 刷新历史仅内存；多日历史/趋势不在范围（本地用量数据小时桶可作后续趋势源）；响应头速率限额余量、GitHub/Cursor/云厂商（Vertex/Azure/Bedrock/百炼/方舟等）为后续项
 - 阈值语义：百分比越大越紧（用量/限额）；余额类无限额概念，恒为正常态
+
+## 开发验证
+
+本次使用 Node.js 24.19.0 验证。在仓库目录执行：
+
+```bash
+npm ci
+npm test
+```
+
+测试包括供应商查询解析、自动探测、存储、宿主路由与会话隔离，以及调度、用量替换和客户端交互回归。
+测试使用模拟供应商响应，不会访问真实账户。React 组件测试不替代真实 DSH 浏览器布局验收。
+
+查询配置变化会清除该供应商的旧结果；旧请求完成后不再发布数据。失败刷新保留同一配置下的旧数据并标记失败。
+同一会话、同一轮次与步骤的用量更新替换此前样本；跨小时及跨午夜时仍归入首次报告的小时。
+HTTP 路由仅接受约定的 GET/POST 方法；带 Origin 的浏览器请求必须与本机宿主的协议、主机和端口一致。
+通过反向代理访问时需另外设计受信任的公开来源配置，本版本不会信任转发头。
+Anthropic 组织响应若声明仍有后续分页，会报告失败，避免将首页数据当作完整总数。
