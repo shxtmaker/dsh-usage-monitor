@@ -1,6 +1,6 @@
 # dsh-usage-monitor（用量监控）
 
-当前版本：**v1.0.0**。
+当前版本：**v1.1.0**（2026-09-08）。
 
 DeepSeek Harness 插件：显示各供应商**可用周期限额 / 余额 / 报告用量费用**——sidebar 脚部小组件 + 详情页。
 
@@ -28,18 +28,25 @@ DeepSeek Harness 插件：显示各供应商**可用周期限额 / 余额 / 报�
 无限额度 / 未知余额 / 缺字段保留未知，不冒充零值；分页失败不发布部分总数；不同币种、窗口、来源不相加。
 Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登录）按规格丢弃——Codex 需本机 CLI 登录态，不适用于服务端 DSH，不注册。
 
+## v1.1 新增
+
+- **设置页「仅显示已添加」**：供应商目录与详情页分栏只显示**已添加供应商**——服务端推导（最新 DSH 探测命中 ∨ 已启用 ∨ 任一密钥已填；仅改阈值/Base URL 不算；显式停用但有密钥仍显示）。未添加的收进目录底部**「可添加供应商」折叠列表**，每项「打开配置 → 添加」，保存后即加入主目录。
+- **重新扫描按钮（标题行）**：设置目录标题行显示「已接入 N」计数芯片 + **⟳ 重新扫描**，结果独立一行（接入名单 / 最近扫描时间 / 失败原因）。按钮触发 `POST /api/quota-monitor/rescan`，与周期自动探测完全一致（幂等自动填入、尊重手动密钥与显式关闭）；发现新的可添加供应商时**自动展开并高亮**。
+- **窗口用量重置时间补齐（Command Code）**：5h / 周窗口的 `resetAt`（真实契约 = epoch-毫秒，已用真实账户复核）经宽容解析显示「约 X 小时后重置 / M月D日 重置」；月额度显示订阅周期结束 `currentPeriodEnd`（缺省如实标注，绝不把 `currentPeriodStart` 当重置）；窗口确实未提供重置时刻的行如实标注「未提供重置时刻」，不伪造。
+- **供应商配置页「当前额度」预览**：独立配置页展示最近一次取数的限额条目（含重置时间），与小组件 Popover / 详情卡片同一份数据 → 三处一致。
+
 ## 功能
 
 - **小组件（sidebar 脚部）**：**经 DSH 官方槽位 `sidebar.footer.action` 嵌入**侧边栏底部，与其他脚部按钮/组件同处内容流、并排渲染，**不扫描/不劫持 DOM、不做 fixed 悬浮**；宽栏紧凑条主显示**当前显示页正在使用的模型供应商**——显示页 = 侧栏会话列表当前选中的会话（官方 `sessions.list.current`），显示该会话**最近一次**真实 LLM 调用命中的供应商 + 模型名（「在用 DeepSeek · deepseek-chat」+ 相对时间）；多会话并行用不同供应商时**各页互不串**，切会话经 sessions 订阅即时重拉、同页内每 10s 刷新；当前页尚无调用（含新会话/空页）严格显示「暂无调用」，不回退其它页。点击展开 Popover 查看各供应商限额；rail 窄栏自动切换图标态。弹层列表仍显示**当前供应商**（DSH 启用 ∩ 近期流量；组织账务等无 DSH 路由的供应商恒为候选；冷启动或近 24h 无流量时按启用清单兜底并标注）
-- **详情页**：供应商分栏（kanban 风），栏头状态胶囊 + 限额/用量/费用条目卡片；刷新历史默认收起；刷新全部 / 设置入口
-- **设置**：原生设置卡片 + 详情页内面板；配置界面参照上游页面模型改为「**供应商页目录 → 每个供应商独立配置页**」——目录行内可直接启停/测试连接，点「打开配置」进入该供应商单页（凭据类别徽标、按 needs 动态渲染的密钥字段、Base URL/警告·临界阈值、测试连接、保存），全局轮询间隔/保留期单独一组；OpenCode 页含 allowance Token 与 org id
+- **详情页**：供应商分栏（kanban 风，仅已添加供应商），栏头状态胶囊 + 限额/用量/费用条目卡片；刷新历史默认收起；刷新全部 / 设置入口
+- **设置**：原生设置卡片 + 详情页内面板；配置界面为「**供应商页目录（仅显示已添加）→ 每个供应商独立配置页**」——目录行内可直接启停/测试连接，点「打开配置」进入该供应商单页（凭据类别徽标、**当前额度预览**、按 needs 动态渲染的密钥字段、Base URL/警告·临界阈值、测试连接、保存）；目录底部「可添加供应商」折叠列表提供手动添加入口；标题行含 **⟳ 重新扫描** 与最近扫描结果；全局轮询间隔/保留期单独一组；OpenCode 页含 allowance Token 与 org id
 - **调度**：默认 60s 轮询（10–3600 可配）；同供应商 in-flight 合并去重；失败指数退避（30s→1m→2m→4m→10m；401/403 → 30min）；手动刷新立即执行
 - **历史**：每供应商最近 50 条、全局 500 条（内存，重启即清）
 - **本地用量数据**：当日 token 消耗按「供应商 × 小时桶」落盘（`$DSH_HOME/quota-monitor/usage.json`，原子写、防抖 2s），按保留期修剪（默认 7 天，1–90 可配）
 - **密钥**：DSH settings 命名空间 `quota-monitor`（`role('secret')` 脱敏、热重载、原子写）
-- **各 API key 自动识别（v0.3）**：启动 / settings 热重载 / `llm/adapters-updated` / `credentials/reference-updated` 时，以 **DSH 接缝为准**探测 `llm-deepseek` 配置节与 `llm-pi-ai.providers` 字典（`ctx.llm` 目录/存活路由补充，凭据经 `ctx.credentials` 解析后回退 `process.env`），把每把普通 Key 归属到对应供应商（路由名精确/前缀 + 官方主机兜底归类）→ 自动启用 + 官方 Base URL（DSH 路由地址在白名单内才采用）+ **API Key 本体拷贝**（仅插件侧为空时填写，手动 Key 不覆盖、显式关闭不复活）。凭据类别守门：**DSH 普通聊天 Key 绝不套用到需要 Admin/Management Key 的组织/账户供应商**——OpenAI/Anthropic 聊天路由探测后仅提示「需 Admin Key 手动配置」；此类页面出现时设置面板标注手动填写。
+- **各 API key 自动识别（v0.3 起）**：启动 / settings 热重载 / `llm/adapters-updated` / `credentials/reference-updated` 时，以 **DSH 接缝为准**探测 `llm-deepseek` 配置节与 `llm-pi-ai.providers` 字典（`ctx.llm` 目录/存活路由补充，凭据经 `ctx.credentials` 解析后回退 `process.env`），把每把普通 Key 归属到对应供应商（路由名精确/前缀 + 官方主机兜底归类）→ 自动启用 + 官方 Base URL（DSH 路由地址在白名单内才采用）+ **API Key 本体拷贝**（仅插件侧为空时填写，手动 Key 不覆盖、显式关闭不复活）。凭据类别守门：**DSH 普通聊天 Key 绝不套用到需要 Admin/Management Key 的组织/账户供应商**——OpenAI/Anthropic 聊天路由探测后仅提示「需 Admin Key 手动配置」；此类页面出现时设置面板标注手动填写。
 
-## 客户端渲染契约（v0.2 重构）
+## 客户端渲染契约
 
 浏览器半 `lib/client.js` 不操作侧边栏 DOM，全部走 DSH 官方客户端注入面：
 
@@ -53,42 +60,49 @@ Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登
 ## 结构
 
 ```
-lib/index.js      宿主半：settings 注册（schema 按供应商 needs 生成）、轮询调度、当前供应商/当日消耗量折叠、/api 路由、自动探测接入
+lib/index.js      宿主半：settings 注册（schema 按供应商 needs 生成）、轮询调度、当前供应商/当日消耗量折叠、
+                  自动探测接入、/api 路由（含 /rescan）、每供应商 added/addedReason 推导
 lib/detect.js     DSH 路由→供应商识别（凭据类别×地域、官方主机/路径判定、Admin 不套用）与自动填入补丁
 lib/providers.js  数据层：供应商注册表（13 项，元数据驱动 needs/baseUrl/官方端点白名单）+ 全部查询方法
+                  （含重置时间宽容解析：ISO / epoch-毫秒；窗口缺 resetAt 如实标注）
 lib/scheduler.js  查询调度、失败退避、并发合并与配置版本失效
 lib/usage.js      会话步骤用量替换记账（跨小时保留首次报告小时）
 lib/storage.js    本地用量数据（小时桶、保留期、原子写）
-lib/client.js     客户端半：脚部槽位小组件（sessions.list 跟随当前显示页）/ Popover / 详情页 / 设置面板（按 needs 动态渲染）
-test/smoke.mjs    数据层冒烟（Mock fetch：全部官方方法 + 端点校验 + 多币种/分页）
+lib/client.js     客户端半：脚部槽位小组件（sessions.list 跟随当前显示页）/ Popover / 详情页 /
+                  设置面板（已添加过滤目录 + 可添加列表 + 标题行重新扫描 + 配置页当前额度预览）
+test/smoke.mjs    数据层冒烟（Mock fetch：全部官方方法 + 端点校验 + 多币种/分页 + CC 重置时间）
 test/detect.mjs   自动探测单元测试（路由/地域/凭据类别/去重/无密钥/手动接管）
-test/mock-dsh.mjs 宿主半集成冒烟（Mock ctx + fetch）
+test/mock-dsh.mjs 宿主半集成冒烟（Mock ctx + fetch；含 added 推导与 /rescan）
 test/storage.mjs  本地用量数据存储单元测试
 ```
 
-宿主路由（loopback 同源守卫）：`GET /api/quota-monitor/state[?session=<会话id>]`（含探测诊断 detect 与每供应商 needs/meta 元数据；带 `?session=` 时 `active` 为该会话页最近一次调用，空串/未知会话=暂无，缺参=全局最近一次）·
-`POST /refresh`（同样支持 `?session=` 保持会话范围）· `POST /test`（`{supplier}`）· `POST /settings`（深合并，密钥留空 = 不变）。
+宿主路由（loopback 同源守卫）：`GET /api/quota-monitor/state[?session=<会话id>]`（含探测诊断 detect、每供应商 needs/meta 元数据与 `added/addedReason`；带 `?session=` 时 `active` 为该会话页最近一次调用，空串/未知会话=暂无，缺参=全局最近一次）·
+`POST /refresh`（同样支持 `?session=` 保持会话范围）· `POST /test`（`{supplier}`）· `POST /settings`（深合并，密钥留空 = 不变）·
+`POST /rescan`（手动触发与周期自动探测一致的 DSH 扫描 + 自动填入，返回与 /state 相同载荷）。
 
 ## 安装
 
 ```bash
-# 1. 添加插件（link 安装，目录即本仓库）
+# 1. 添加插件（link 安装，目录即本仓库；或 npm pack 出的 tgz 安装）
 dsh plugin --profile web add link:/run/media/lin-qingyue/AI\ Project/DeepSeek\ harness/插件开发/用量监控
+#   或 dsh plugin --profile web add ./dsh-quota-monitor-1.1.0.tgz
 
 # 2. 重启 web GUI 使补丁生效（会中断当前会话）
 dsh --profile web
 ```
 
 装好后在 DSH 设置页（插件清单 → 用量监控卡片）配置各供应商密钥，或点小组件「详情 → 设置」。
-v0.1/v0.2 升级：直接覆盖本目录文件后刷新浏览器 / 重启 web GUI 即可；旧 settings 中 deepseek/opencode/commandcode 配置原样保留，
-新增供应商默认关闭，探测到 DSH 对应密钥后自动启用。
+升级：v0.x/v1.0 → v1.1 直接把仓库文件覆盖到已安装插件目录
+（`~/.dsh/profiles/web/node_modules/dsh-quota-monitor`）后刷新浏览器 / 重启 web GUI 即可；
+旧 settings 中已配置供应商原样保留，新增供应商默认关闭、探测到 DSH 对应密钥后自动启用。
 
 ## 测试
 
 ```bash
-node test/smoke.mjs      # 数据层：13 供应商解析 / 端点校验 / 多币种 / 分页 / 401
+npm test            # node --test test/*.mjs：14 项全部通过
+node test/smoke.mjs      # 数据层：13 供应商解析 / 端点校验 / 多币种 / 分页 / 401 / CC 重置时间
 node test/detect.mjs     # 自动探测：路由映射 / 地域 / 凭据类别守门 / 去重
-node test/mock-dsh.mjs   # 宿主半：路由 / 事件折叠 / 设置热更新 / 自动填入 / 退避
+node test/mock-dsh.mjs   # 宿主半：路由 / 事件折叠 / 设置热更新 / 自动填入 / added 推导 / /rescan / 退避
 node test/storage.mjs    # 本地用量数据存储
 ```
 
@@ -103,6 +117,7 @@ node test/storage.mjs    # 本地用量数据存储
 - 密钥**清除**需直接编辑 `$DSH_HOME/settings.yaml`（设置面板只支持留空不改）
 - OpenAI / Anthropic 组织与 OpenRouter 账户（Management）供应商依赖 DSH 之外的更高凭据类别 → 不自动填，仅手动；真实账户联调尚未用真实 Admin/Management Key 验证（与上游验证记录一致）
 - Codex（本机 CLI 登录）不注册；OpenCode / Command Code 独立 CLI 直连（不经 DSH 路由）的用法仍不可观测 → 恒候选、当日消耗显示 —
+- Z.ai / 智谱 等仅返回百分比（无任何时刻字段）的行如实标注、不显示重置时间（不推断、不伪造）；Command Code 窗口重置时间为真实 `resetAt`（epoch-毫秒，已复核）
 - 刷新历史仅内存；多日历史/趋势不在范围（本地用量数据小时桶可作后续趋势源）；响应头速率限额余量、GitHub/Cursor/云厂商（Vertex/Azure/Bedrock/百炼/方舟等）为后续项
 - 阈值语义：百分比越大越紧（用量/限额）；余额类无限额概念，恒为正常态
 
@@ -115,8 +130,10 @@ npm ci
 npm test
 ```
 
-测试包括供应商查询解析、自动探测、存储、宿主路由与会话隔离，以及调度、用量替换和客户端交互回归。
-测试使用模拟供应商响应，不会访问真实账户。React 组件测试不替代真实 DSH 浏览器布局验收。
+测试包括供应商查询解析、自动探测、存储、宿主路由与会话隔离，以及调度、用量替换、客户端交互与
+v1.1 的 added 推导 / /rescan 回归。测试使用模拟供应商响应，不会访问真实账户；Command Code 窗口
+`resetAt` 契约另经真实账户只读复核（见 docs / .research-raw 记录）。React 组件测试不替代真实
+DSH 浏览器布局验收。
 
 查询配置变化会清除该供应商的旧结果；旧请求完成后不再发布数据。失败刷新保留同一配置下的旧数据并标记失败。
 同一会话、同一轮次与步骤的用量更新替换此前样本；跨小时及跨午夜时仍归入首次报告的小时。
