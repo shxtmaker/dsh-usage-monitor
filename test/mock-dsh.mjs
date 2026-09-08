@@ -154,11 +154,11 @@ const paths = ctx._routes.map((r) => r.path);
 assert.deepEqual(paths, ["/api/quota-monitor/state", "/api/quota-monitor/refresh", "/api/quota-monitor/test", "/api/quota-monitor/settings"]);
 
 const call = async (path, body) => {
-  const route = ctx._routes.find((r) => r.path === path);
+  const route = ctx._routes.find((r) => r.path === String(path).split("?")[0]);
   let status = 0;
   let payload = null;
   const res = { writeHead: (s) => { status = s; }, end: (d) => { payload = JSON.parse(d); } };
-  const req = { headers: { origin: "" }, on: (ev, cb) => { if (ev === "data") { if (body) cb(JSON.stringify(body)); } if (ev === "end") cb(); } };
+  const req = { url: path, headers: { origin: "" }, on: (ev, cb) => { if (ev === "data") { if (body) cb(JSON.stringify(body)); } if (ev === "end") cb(); } };
   await route.handler(req, res);
   return { status, payload };
 };
@@ -280,6 +280,42 @@ const r = await call("/api/quota-monitor/refresh");
 assert.equal(r.payload.suppliers.find((s) => s.id === "deepseek").state, "ok");
 assert.equal(r.payload.history.filter((h) => h.supplier === "deepseek").length >= 1, true);
 console.log("✓ refresh 路由 + 刷新历史记录");
+
+// ---- 小组件按「当前显示页（会话）」归集最近一次调用；切页即换、互不干扰 ----
+const emitTo = (session, e) => { for (const cb of ctx._events["session/event"]) cb(session, e); };
+const sessA = { id: "session-a" };
+const sessB = { id: "session-b" };
+emitTo(sessA, { type: "assistant/message", data: { source: { provider: "deepseek-official", model: "ds-page-v3" }, usage: { inputTokens: 10 } } });
+emitTo(sessB, { type: "assistant/message", data: { source: { provider: "commandcode-goat", model: "cc-page" }, usage: { inputTokens: 20 } } });
+const pa = await call("/api/quota-monitor/state?session=session-a");
+assert.equal(pa.payload.activeScope, "session-a");
+assert.equal(pa.payload.active?.supplierId, "deepseek", "页 A 显示 A 的最近调用（DeepSeek）");
+assert.equal(pa.payload.active?.model, "ds-page-v3");
+const pb = await call("/api/quota-monitor/state?session=session-b");
+assert.equal(pb.payload.active?.supplierId, "commandcode", "页 B 显示 B 的最近调用（Command Code）");
+assert.equal(pb.payload.active?.model, "cc-page");
+const pg = await call("/api/quota-monitor/state"); // 不带参数 = 全局最近一次（旧语义兜底）
+assert.equal(pg.payload.activeScope, null);
+assert.equal(pg.payload.active?.supplierId, "commandcode");
+const pn = await call("/api/quota-monitor/state?session=");
+assert.equal(pn.payload.activeScope, "");
+assert.equal(pn.payload.active, null, "无当前页（空 session）严格显示暂无调用");
+const px = await call("/api/quota-monitor/state?session=session-unknown");
+assert.equal(px.payload.active, null, "未知会话页同样严格为空");
+// 页 A 内再次调用 → 只影响 A；切回 B 仍是 B 的调用
+emitTo(sessA, { type: "assistant/message", data: { source: { provider: "opencode-go", model: "oc-page" }, usage: { inputTokens: 30 } } });
+const pa2 = await call("/api/quota-monitor/state?session=session-a");
+assert.equal(pa2.payload.active?.supplierId, "opencode", "页 A 的最近调用更新为 OpenCode");
+assert.equal(pa2.payload.active?.model, "oc-page");
+const pb2 = await call("/api/quota-monitor/state?session=session-b");
+assert.equal(pb2.payload.active?.supplierId, "commandcode", "页 B 不受页 A 新调用影响");
+const pg2 = await call("/api/quota-monitor/state");
+assert.equal(pg2.payload.active?.supplierId, "opencode", "全局最近一次跟随最后一次事件");
+// refresh 也保持会话范围（手动刷新后不应把另一页的 active 带回来）
+const rf = await call("/api/quota-monitor/refresh?session=session-b");
+assert.equal(rf.payload.activeScope, "session-b");
+assert.equal(rf.payload.active?.supplierId, "commandcode", "refresh 后仍显示当前页 B 的在用供应商");
+console.log("✓ 当前显示页：A/B 会话独立最近调用、空/未知页严格为空、refresh 保持会话范围");
 
 dispose();
 rmSync(TEST_HOME, { recursive: true, force: true });

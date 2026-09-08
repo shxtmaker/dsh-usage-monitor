@@ -40,8 +40,12 @@ v0.3 auto-detect: every plain API key present in the DSH seam (`llm-deepseek` se
 _Avoid_: guessing by key prefix (upstream forbids it)
 
 **小组件 (Widget)**:
-The compact, always-visible DSH GUI display showing which model supplier the harness is using right now. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `quota-monitor`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses. The wide strip's main display is the **在用供应商** (supplier · model of the latest real call); its Popover lists **当前供应商** quota entries.
+The compact, always-visible DSH GUI display showing which model supplier the currently displayed page is using. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `quota-monitor`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses. The wide strip's main display is the **在用供应商** of the **当前显示页** (the session selected in the session browser = official `sessions.list.current`; the client subscribes and refetches immediately on page switch); its Popover lists **当前供应商** quota entries.
 _Avoid_: panel, card
+
+**当前显示页 (Current Page)**:
+The one session the user currently views in the web GUI — `ctx.sessions.list.getSnapshot().current` on the client. The compact strip is scoped to it: per-session traffic (`sessionRouteSeen`) selects that page's most recent call, so concurrent sessions using different suppliers never bleed into each other; a page with no calls shows 暂无调用 (never falls back to another page). Absent `?session=` the state endpoint still returns the global latest (legacy).
+_Avoid_: active tab in OS browser, foreground window
 
 **详情页 (Detail Page)**:
 The full view opened from the widget showing every quota field per supplier in a table, plus refresh history.
@@ -52,7 +56,7 @@ A supplier the harness is actually using now — enabled in the DSH configuratio
 _Avoid_: active provider, used supplier
 
 **在用供应商 (Active Supplier)**:
-The supplier of the **most recent** real LLM call observed from `session/event`, carrying the model name of that call; this is what the wide sidebar compact strip shows by default (「在用 DeepSeek · deepseek-chat」+ relative time). Before any call it shows "暂无调用"; it is independent of the enabled/current filtering that governs the popover list.
+The supplier of the **most recent** real LLM call observed within the **当前显示页** from `session/event` (route/model per `session.id` in `sessionRouteSeen`), carrying the model name of that call; this is what the wide sidebar compact strip shows by default (「在用 DeepSeek · deepseek-chat」+ relative time). A page with no calls shows "暂无调用"; independent of the enabled/current filtering that governs the popover list, and of other pages' traffic. (No `?session=` → the API returns the global latest instead.)
 _Avoid_: active provider, 当前路由供应商, 正在调用的 provider
 
 **当日消耗量 (Daily Usage)**:

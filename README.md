@@ -28,7 +28,7 @@ Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登
 
 ## 功能
 
-- **小组件（sidebar 脚部）**：**经 DSH 官方槽位 `sidebar.footer.action` 嵌入**侧边栏底部，与其他脚部按钮/组件同处内容流、并排渲染，**不扫描/不劫持 DOM、不做 fixed 悬浮**；宽栏紧凑条主显示**当前正在使用的模型供应商**——取最近一次真实 LLM 调用命中的供应商 + 模型名（「在用 DeepSeek · deepseek-chat」，附相对时间；尚无调用时显示「暂无调用」），点击展开 Popover 查看各供应商限额；rail 窄栏自动切换图标态。弹层列表只显示**当前供应商**（DSH 启用 ∩ 近期流量；组织账务等无 DSH 路由的供应商恒为候选；冷启动或近 24h 无流量时按启用清单兜底并标注）
+- **小组件（sidebar 脚部）**：**经 DSH 官方槽位 `sidebar.footer.action` 嵌入**侧边栏底部，与其他脚部按钮/组件同处内容流、并排渲染，**不扫描/不劫持 DOM、不做 fixed 悬浮**；宽栏紧凑条主显示**当前显示页正在使用的模型供应商**——显示页 = 侧栏会话列表当前选中的会话（官方 `sessions.list.current`），显示该会话**最近一次**真实 LLM 调用命中的供应商 + 模型名（「在用 DeepSeek · deepseek-chat」+ 相对时间）；多会话并行用不同供应商时**各页互不串**，切会话经 sessions 订阅即时重拉、同页内每 10s 刷新；当前页尚无调用（含新会话/空页）严格显示「暂无调用」，不回退其它页。点击展开 Popover 查看各供应商限额；rail 窄栏自动切换图标态。弹层列表仍显示**当前供应商**（DSH 启用 ∩ 近期流量；组织账务等无 DSH 路由的供应商恒为候选；冷启动或近 24h 无流量时按启用清单兜底并标注）
 - **详情页**：供应商分栏（kanban 风），栏头状态胶囊 + 限额/用量/费用条目卡片；刷新历史默认收起；刷新全部 / 设置入口
 - **设置**：原生设置卡片 + 详情页内面板；配置界面参照上游页面模型改为「**供应商页目录 → 每个供应商独立配置页**」——目录行内可直接启停/测试连接，点「打开配置」进入该供应商单页（凭据类别徽标、按 needs 动态渲染的密钥字段、Base URL/警告·临界阈值、测试连接、保存），全局轮询间隔/保留期单独一组；OpenCode 页含 allowance Token 与 org id
 - **调度**：默认 60s 轮询（10–3600 可配）；同供应商 in-flight 合并去重；失败指数退避（30s→1m→2m→4m→10m；401/403 → 30min）；手动刷新立即执行
@@ -43,7 +43,7 @@ Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登
 
 | 槽位 | 注册 id/key | 内容 |
 |---|---|---|
-| `sidebar.footer.action`（list） | `id: quota-monitor` | 小组件主体：宽栏紧凑条（「在用」最近一次调用的 供应商 · 模型 + 相对时间）/ rail 图标态；Popover 与弹层经 `createPortal` 挂 body |
+| `sidebar.footer.action`（list） | `id: quota-monitor` | 小组件主体：宽栏紧凑条（「在用」当前显示页最近一次调用的 供应商 · 模型 + 相对时间）/ rail 图标态；跟随 `sessions.list.current` 切页即时重拉；Popover 与弹层经 `createPortal` 挂 body |
 | `settings.plugin.item` | `key: quota-monitor` | 设置页「插件清单 → 用量监控」卡片 |
 
 依赖声明只列 boot graph 内真实存在的包；Popover 采用官方「贴底展开」定位；详情/设置是居中 overlay。客户端代码由宿主按 rev 重新下发，覆盖文件后刷新浏览器即可生效（无需重新构建插件）。
@@ -55,15 +55,15 @@ lib/index.js      宿主半：settings 注册（schema 按供应商 needs 生成
 lib/detect.js     DSH 路由→供应商识别（凭据类别×地域、官方主机/路径判定、Admin 不套用）与自动填入补丁
 lib/providers.js  数据层：供应商注册表（13 项，元数据驱动 needs/baseUrl/官方端点白名单）+ 全部查询方法
 lib/storage.js    本地用量数据（小时桶、保留期、原子写）
-lib/client.js     客户端半：脚部槽位小组件 / Popover / 详情页 / 设置面板（按 needs 动态渲染）
+lib/client.js     客户端半：脚部槽位小组件（sessions.list 跟随当前显示页）/ Popover / 详情页 / 设置面板（按 needs 动态渲染）
 test/smoke.mjs    数据层冒烟（Mock fetch：全部官方方法 + 端点校验 + 多币种/分页）
 test/detect.mjs   自动探测单元测试（路由/地域/凭据类别/去重/无密钥/手动接管）
 test/mock-dsh.mjs 宿主半集成冒烟（Mock ctx + fetch）
 test/storage.mjs  本地用量数据存储单元测试
 ```
 
-宿主路由（loopback 同源守卫）：`GET /api/quota-monitor/state`（含探测诊断 detect 与每供应商 needs/meta 元数据）·
-`POST /refresh` · `POST /test`（`{supplier}`）· `POST /settings`（深合并，密钥留空 = 不变）。
+宿主路由（loopback 同源守卫）：`GET /api/quota-monitor/state[?session=<会话id>]`（含探测诊断 detect 与每供应商 needs/meta 元数据；带 `?session=` 时 `active` 为该会话页最近一次调用，空串/未知会话=暂无，缺参=全局最近一次）·
+`POST /refresh`（同样支持 `?session=` 保持会话范围）· `POST /test`（`{supplier}`）· `POST /settings`（深合并，密钥留空 = 不变）。
 
 ## 安装
 
