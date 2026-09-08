@@ -1,6 +1,6 @@
 {
   "name": "dsh-usage-monitor",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "description": "供应商可用周期限额监控：DSH sidebar 小组件 + 详情页；小组件宽栏主显示「当前显示页（当前选中的会话）最近一次 LLM 调用正在使用的模型供应商」（在用 · 供应商 · 模型，切页实时跟随、各页互不串），限额/余额明细由弹层与详情页承载，覆盖 DeepSeek 余额（多币种）/ OpenRouter 普通 Key 额度与今日费用及 Management credits / OpenAI·Anthropic 组织 AdminKey 用量与费用 / Moonshot 国内·国际余额 / Z.ai·智谱 Coding Plan / MiniMax Token Plan / OpenCode·Command Code 兼容来源；自动识别 DSH harness 各普通 API Key 并自动填入（按凭据类别匹配，Admin/Management 手动配置），密钥脱敏存储。",
   "author": "shxtmaker <https://github.com/shxtmaker>",
   "license": "MIT",
@@ -15,6 +15,8 @@
   "files": [
     "lib",
     "test",
+    "scripts",
+    "playwright.config.mjs",
     "cordis.patch.yml",
     "README.md",
     "CONTEXT.md",
@@ -52,9 +54,13 @@
     "schemastery": "^3.18.0"
   },
   "scripts": {
-    "test": "node --test test/*.mjs"
+    "test": "node --test test/*.mjs",
+    "test:browser": "playwright test",
+    "test:pack": "node scripts/check-package.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "react-dom": "^18.3.1",
     "react-test-renderer": "^18.3.1"
   }
 }

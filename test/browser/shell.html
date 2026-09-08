@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>用量监控</title>
+<style>body{margin:0;background:#15191f;color:#e6edf3;font:14px system-ui}button,input{font:inherit}aside{position:fixed;bottom:24px;left:16px;width:240px}main{padding:24px}</style>
+<main><h1>用量监控</h1><div id="settings"></div><button id="background">返回会话</button></main><aside id="footer"></aside>
+<script src="/react.js"></script><script src="/react-dom.js"></script>
+<script>
+let dictionary = {}, slots = {};
+const t = (key, values = {}) => String(dictionary[key] || key).replace(/\{(\w+)\}/g, (_, k) => values[k] ?? `{${k}}`);
+window.__ModuleLoader__ = { load({factory}) {
+ const plugin = factory(id => id === 'react' ? React : ReactDOM);
+ plugin.apply({locale:{register(ns,locales){dictionary=locales.zh;}},effect(){},slots:{
+   inject(name,fn){fn();},register({name},component){slots[name]=component;return ()=>{};}
+ }});
+ ReactDOM.createRoot(document.getElementById('settings')).render(React.createElement(slots['settings.plugin.item'],{t}));
+ ReactDOM.createRoot(document.getElementById('footer')).render(React.createElement(slots['sidebar.footer.action'],{t,wide:!location.search.includes('rail')}));
+}};
+</script><script src="/client.js"></script>
+</html>

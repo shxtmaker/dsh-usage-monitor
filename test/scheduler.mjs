@@ -68,6 +68,29 @@ test("thrown failures preserve data and a successful manual retry resets delay",
   assert.deepEqual(failed.entries, success.entries);
   fail = false;
   await f.scheduler.run("a", { force: true });
-  assert.equal(f.scheduler.slots.a.failures, 0);
-  assert.equal(f.scheduler.slots.a.nextAt, 61000);
+  assert.equal(f.scheduler.getState("a").failures, 0);
+  assert.equal(f.scheduler.getState("a").nextAt, 61000);
+});
+
+test("a manual refresh after credential replacement queries the new revision and cancels the old one", async () => {
+  const requests = [];
+  let cfg = { enabled: true, apiKey: "old" };
+  const scheduler = createScheduler({ providers: { a: { query(config, { signal }) {
+    return new Promise((resolve) => requests.push({ key: config.apiKey, signal, resolve }));
+  } } }, getConfig: () => ({ ...cfg }), onRecord() {} });
+  const old = scheduler.run("a");
+  await Promise.resolve();
+  cfg.apiKey = "new";
+  scheduler.sync();
+  const fresh = scheduler.run("a", { force: true });
+  await Promise.resolve();
+  assert.notEqual(old, fresh);
+  assert.deepEqual(requests.map((r) => r.key), ["old", "new"]);
+  assert.equal(requests[0].signal.aborted, true);
+  requests[0].resolve({ ...success, headline: { amt: "old" } });
+  assert.equal(await old, null);
+  assert.equal(scheduler.run("a", { force: true }), fresh);
+  requests[1].resolve({ ...success, headline: { amt: "new" } });
+  assert.equal((await fresh).headline.amt, "new");
+  scheduler.dispose();
 });
