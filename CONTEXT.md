@@ -79,6 +79,18 @@ _Avoid_: sync, update (verb)
 The feature that discovers suppliers already added in the DSH harness (via `ctx.llm` registry and `llm-deepseek`/`llm-pi-ai` settings sections) and auto-fills the plugin's settings for supported routes — enabling, Base URL (adopted only when the DSH route address passes the supplier's official host/path whitelist), and the **API key itself** (copied once from DSH's credential seam into the plugin's secret-role settings field; a user-supplied key is never overwritten; an explicitly disabled supplier is never re-enabled).
 _Avoid_: auto-config, provider discovery
 
+**已添加供应商 (Added Supplier)**:
+A supplier that earns a row in the plugin settings catalog and the detail page columns: DSH auto-detect hit it in the latest scan, **or** it is enabled in the plugin, **or** any secret (apiKey / allowanceToken …) is filled. Merely persisting threshold / Base URL changes without any of the three does **not** count; explicitly disabled but key-set suppliers still count (their enable switch stays reachable); disabled without a key does not. The settings「供应商页目录」and the detail page columns only list added suppliers.
+_Avoid_: configured supplier, enabled supplier
+
+**可添加供应商 (Addable Supplier)**:
+An entry in the collapsible「可添加供应商」list at the bottom of the settings catalog — a registry-supported supplier that is neither detected by DSH, nor enabled, nor key-set. Clicking its「打开配置 → 添加」opens its standalone config page; saving there makes it an **已添加供应商** (opening without saving does not).
+_Avoid_: 未接入供应商, candidate supplier (candidate is a widget/popover term)
+
+**重新扫描 (Rescan)**:
+The manual action on the settings catalog title row: it runs the **same** DSH supplier scan and auto-fill as the periodic auto-detect (idempotent; respects manual keys and explicit disable), then refreshes the catalog and shows connected count / names / last scan time on the title row; when new addable suppliers are found it auto-expands and highlights them.
+_Avoid_: 手动刷新 (refresh re-queries quota; rescan re-discovers supplier topology)
+
 **官方查询覆盖 (Official Query Coverage)**:
 The supplier/endpoint matrix ported from upstream docs/query-coverage.md: DeepSeek multi-currency balance, OpenRouter key quota + daily cost, Moonshot cn/intl balance, Z.ai/智谱 Coding Plan windows, MiniMax Token Plan windows (explicit remaining percent only), OpenAI/Anthropic org usage & cost for the last completed UTC day; OpenCode/Command Code remain private-compat sources. Coverage boundaries (no invented reset times/weekly windows/absolute token counts) carry over.
 _Avoid_: adapters, endpoints table
