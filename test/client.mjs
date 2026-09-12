@@ -5,7 +5,10 @@ import vm from "node:vm";
 import React from "react";
 import { create, act } from "react-test-renderer";
 
-function client(fetch, timers = [], location = { search: "" }) {
+// 第三个参数两种用法都要支持：新的 `slot` 名称（GH v1.2.1 测试）与旧的 `location` 对象（本地用例）
+function client(fetch, timers = [], third = "sidebar.footer.action", fourth) {
+  const slot = typeof third === "string" ? third : (fourth || "sidebar.footer.action");
+  const location = typeof third === "string" ? { search: "" } : third;
   let plugin;
   const slots = {};
   const listeners = {};
@@ -25,9 +28,9 @@ function client(fetch, timers = [], location = { search: "" }) {
     setInterval(fn) { timers.push(fn); return fn; }, clearInterval() {},
   });
   plugin.apply({ locale: { register() {} }, effect() {}, slots: {
-    inject(name, fn) { fn(); }, register({ name }, component) { slots[name] = component; },
+    inject(name, fn) { fn(); }, register(descriptor, component) { slots[descriptor.name ?? descriptor.key] = component; },
   } });
-  return slots["sidebar.footer.action"];
+  return slots[slot];
 }
 
 const payload = (name) => ({ ok: true, traffic: { channelAlive: true }, suppliers: [], active: { name, model: "model", at: Date.now() } });
@@ -284,4 +287,28 @@ test("popover and detail card show the same precise reset countdown", async () =
     const card = tree.root.findByProps({ className: "qm-card-item" });
     assert.match(textOf(card), /5h\d\dm 后重置/, "详情卡片应显示同一倒计时");
   } finally { await act(async () => { tree?.unmount(); }); }
+});
+
+test("settings preserve non-secret values and retain the draft on rejected saves", async () => {
+  const posts = [];
+  const data = { ok: true, poll: {}, suppliers: [{ id: "opencode", name: "OpenCode", added: true,
+    enabled: true, orgId: "org-original", meta: { needs: [{ key: "apiKey", secret: true }, { key: "orgId", secret: false }] } }] };
+  const Component = client(async (url, opts) => {
+    if (opts?.method === "POST") posts.push(JSON.parse(opts.body));
+    return { ok: opts?.method !== "POST", status: 400,
+      json: async () => opts?.method === "POST" ? { ok: false, error: "validation rejected" } : data };
+  }, [], "settings.plugin.item");
+  let tree;
+  try {
+    await act(async () => { tree = create(React.createElement(Component, { t: (k) => k })); });
+    await act(async () => { tree.root.findByProps({ className: "qm-card-btn" }).props.onClick(); });
+    assert.equal(tree.root.findByProps({ role: "dialog" }).props["aria-modal"], true);
+    await act(async () => { tree.root.findByProps({ className: "qm-page-main" }).props.onClick(); });
+    assert.ok(tree.root.findAllByType("input").some((i) => i.props.value === "org-original"));
+    await act(async () => { tree.root.findAllByType("button").find((b) => b.children.includes("save")).props.onClick(); });
+    assert.equal(posts[0].suppliers.opencode.orgId, "org-original");
+    assert.equal(tree.root.findAllByProps({ className: "qm-page-head" }).length, 1);
+    assert.equal(tree.root.findAllByProps({ className: "s-saved" }).length, 0);
+    assert.equal(tree.root.findByProps({ role: "alert" }).children[0], "validation rejected");
+  } finally { await act(async () => tree?.unmount()); }
 });

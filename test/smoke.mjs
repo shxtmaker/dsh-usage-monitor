@@ -64,7 +64,7 @@ const ROUTES = [
       cache_creation: { ephemeral_1h_input_tokens: 30, ephemeral_5m_input_tokens: 40 }, output_tokens: 5 },
   ])],
   ["/organizations/cost_report", (u) => true, orgClaude([
-    { amount: { amount: "123.78912", currency: "USD" } },
+    { amount: "123.78912", currency: "USD" },
   ])],
   ["/alpha/whoami", (u) => true, { org: { id: "org_1" } }],
   ["/alpha/billing/credits", (u) => true, {

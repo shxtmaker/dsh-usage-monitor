@@ -1,6 +1,6 @@
 # dsh-token-quota（用量监控）
 
-当前版本：**v1.1.2**（2026-09-12）。
+当前版本：**v1.2.2**（2026-09-12）。
 
 DeepSeek Harness 插件：显示各供应商**可用周期限额 / 余额 / 报告用量费用**——sidebar 脚部小组件 + 详情页。
 
@@ -83,7 +83,8 @@ lib/providers.js  数据层：供应商注册表（13 项，元数据驱动 need
                   （含重置时间宽容解析：ISO / epoch-毫秒；窗口缺 resetAt 如实标注）
 lib/scheduler.js  查询调度、失败退避、并发合并与配置版本失效
 lib/usage.js      会话步骤用量替换记账（跨小时保留首次报告小时）
-lib/storage.js    本地用量数据（小时桶、保留期、原子写）
+lib/storage.js    本地用量数据（小时桶、保留期、增量合并、写入锁与恢复保护）
+lib/routes.js     自动探测与事件记账共用的供应商路由归属
 lib/client.js     客户端半：脚部槽位小组件（sessions.list 跟随当前显示页）/ Popover / 详情页 /
                   设置面板（已添加过滤目录 + 可添加列表 + 标题行重新扫描 + 配置页当前额度预览）
 test/smoke.mjs    数据层冒烟（Mock fetch：全部官方方法 + 端点校验 + 多币种/分页 + CC 重置时间）
@@ -98,24 +99,80 @@ test/storage.mjs  本地用量数据存储单元测试
 
 ## 安装
 
-```bash
-# 1. 添加插件（link 安装，目录即本仓库；或 npm pack 出的 tgz 安装）
-dsh plugin --profile web add link:/run/media/lin-qingyue/AI\ Project/DeepSeek\ harness/插件开发/用量监控
-#   或 dsh plugin --profile web add ./dsh-token-quota-1.1.2.tgz
+请先安装 Git、Node.js 与 DSH，并确认 `dsh --version` 可以正常运行。以下命令使用 `web` profile；其他 profile 请替换命令中的名称。当前验证环境为 Node.js 24.19.0、DSH 0.1.2-rc.1。
 
-# 2. 重启 web GUI 使补丁生效（会中断当前会话）
+快速添加（源码目录即本仓库，或 `npm pack` 出的压缩包）：
+
+```bash
+# link 安装：直接用源码目录（目录需保留）
+dsh plugin --profile web add "link:$(pwd)"
+#   或压缩包安装
+dsh plugin --profile web add "$(pwd)/dsh-token-quota-1.2.2.tgz"
+```
+
+### 从源码安装
+
+Linux / macOS：
+
+```bash
+git clone https://github.com/shxtmaker/dsh-token-quota.git
+cd dsh-token-quota
+npm ci
+dsh plugin --profile web add "link:$(pwd)"
 dsh --profile web
 ```
 
+Windows PowerShell：
+
+```powershell
+git clone https://github.com/shxtmaker/dsh-token-quota.git
+Set-Location dsh-token-quota
+npm ci
+$pluginDirectory = (Get-Location).Path
+dsh plugin --profile web add "link:$pluginDirectory"
+dsh --profile web
+```
+
+`link:` 安装直接使用该源码目录，请保留目录。若 DSH 已在运行，请先结束当前任务并退出，再重新启动；重启会中断尚未完成的会话任务。
+
+### 从压缩包安装
+
+在源码目录执行 `npm pack`，得到 `dsh-token-quota-1.2.2.tgz`。也可以使用已有的同名安装包。传给 DSH 的文件路径应为绝对路径，避免 profile 工作目录影响相对路径解析。
+
+Linux / macOS（安装包位于当前目录）：
+
+```bash
+dsh plugin --profile web add "$(pwd)/dsh-token-quota-1.2.2.tgz"
+```
+
+Windows PowerShell：
+
+```powershell
+$archivePath = (Resolve-Path ./dsh-token-quota-1.2.2.tgz).Path
+dsh plugin --profile web add $archivePath
+```
+
+安装后重新启动 `dsh --profile web`。压缩包不包含 DSH 与第三方依赖，首次安装仍可能需要联网下载依赖。
+
 装好后在 DSH 设置页（插件清单 → 用量监控卡片）配置各供应商密钥，或点小组件「详情 → 设置」。
-升级：v0.x/v1.0 → v1.1 直接把仓库文件覆盖到已安装插件目录
-（`~/.dsh/profiles/web/node_modules/dsh-token-quota`）后刷新浏览器 / 重启 web GUI 即可；
-旧 settings 中已配置供应商原样保留，新增供应商默认关闭、探测到 DSH 对应密钥后自动启用。
+
+
+### 升级与检查
+
+源码链接安装：在源码目录执行 `git pull --ff-only` 和 `npm ci`，然后重启 DSH 并刷新浏览器。压缩包安装：用新版本安装包的绝对路径重新执行上述 `add` 命令，再重启。
+
+**从旧包名升级（v1.1.1 及更早）**：本插件在 v1.1.2 改名为 `dsh-token-quota`（旧名 `dsh-usage-monitor`，更早为 `dsh-quota-monitor`）。旧包与新包**不要同时保留**：先 `dsh plugin --profile web list --depth 0` 确认旧包存在，再 `dsh plugin --profile web remove <旧包名>`，最后按上述步骤安装新包。首次启动会自动迁移旧数据：用量目录 `<DSH_HOME>/quota-monitor/` → `<DSH_HOME>/dsh-token-quota/`，settings 命名空间 `quota-monitor` → `dsh-token-quota`（含已填密钥；旧命名空间保留，确认无误后可手动清理）。
+
+执行 `dsh plugin --profile web list --depth 0` 应能看到 `dsh-token-quota`；启动后侧边栏底部应出现用量小组件，设置页插件清单中应出现「用量监控」卡片。没有配置密钥或当前会话尚无调用时，空状态属于正常行为。
+
 
 ## 测试
 
 ```bash
-npm test            # node --test test/*.mjs：14 项全部通过
+npm test                # 单元测试与宿主集成回归
+npm run test:pack        # 安装包入口与文件清单验证
+npx playwright install chromium
+npm run test:browser     # Chromium 键盘、表单失败与窄屏交互
 node test/smoke.mjs      # 数据层：13 供应商解析 / 端点校验 / 多币种 / 分页 / 401 / CC 重置时间
 node test/detect.mjs     # 自动探测：路由映射 / 地域 / 凭据类别守门 / 去重
 node test/mock-dsh.mjs   # 宿主半：路由 / 事件折叠 / 设置热更新 / 自动填入 / added 推导 / /rescan / 退避
@@ -139,17 +196,19 @@ node test/storage.mjs    # 本地用量数据存储
 
 ## 开发验证
 
-本次使用 Node.js 24.19.0 验证。在仓库目录执行：
+使用 Node.js 24 运行验证。在仓库目录执行：
 
 ```bash
 npm ci
 npm test
+npm run test:pack
 ```
 
-测试包括供应商查询解析、自动探测、存储、宿主路由与会话隔离，以及调度、用量替换、客户端交互与
-v1.1 的 added 推导 / /rescan 回归。测试使用模拟供应商响应，不会访问真实账户；Command Code 窗口
-`resetAt` 契约另经真实账户只读复核（见 docs / .research-raw 记录）。React 组件测试不替代真实
-DSH 浏览器布局验收。
+测试包括供应商查询解析、自动探测、存储恢复与跨进程合并、宿主路由与会话隔离、调度取消、用量替换、客户端保存失败，以及 added 推导和重新扫描回归。供应商响应均为模拟数据，不访问真实账户。浏览器测试使用真实 React、插件 HTTP 路由和隔离的数据目录；真实 DSH 的安装及槽位接入另行验收。CI 在 Windows 与 Linux 上运行单元、打包及 Chromium 测试。
+
+查询切换配置或卸载插件时会取消旧请求；整次查询最长 120 秒，单个 HTTP 请求最长 20 秒。自动扫描共享同一调度入口；已删除会话的索引随宿主删除事件回收。
+
+用量文件采用同进程共享、跨进程短写锁和增量合并。读取损坏文件或不支持的版本时保留原文件，并在详情中显示存储错误；修复文件后可重试保存。写入失败不会清除尚未保存的内存增量。异常退出若遗留 `usage.json.lock`，请先确认使用该数据目录的 DSH 进程均已停止，再移除该锁文件并重启。退出时仍无法写入的增量不能保证保留。
 
 查询配置变化会清除该供应商的旧结果；旧请求完成后不再发布数据。失败刷新保留同一配置下的旧数据并标记失败。
 同一会话、同一轮次与步骤的用量更新替换此前样本；跨小时及跨午夜时仍归入首次报告的小时。
