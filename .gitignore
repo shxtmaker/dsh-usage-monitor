@@ -10,5 +10,6 @@ ms.html
 st.html
 ds_api.html
 *.tgz
+*.tar.gz
 .DS_Store
 DSH-plugin-research.md
