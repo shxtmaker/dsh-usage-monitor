@@ -5,10 +5,13 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  LEGACY_DIR_NAME,
+  USAGE_DIR_NAME,
   dayKeyOf,
   hourKeyOf,
   hourTimeMs,
   loadUsageFile,
+  migrateUsageDir,
   pruneBuckets,
   saveUsageFile,
   usageFilePath,
@@ -56,5 +59,31 @@ saveUsageFile(junk, {}, 7);
 assert.deepEqual(loadUsageFile(junk), {}, "空桶文件应返回空");
 console.log("✓ 缺失/空文件容错");
 
+// ---- 改名迁移：旧目录 quota-monitor/ → 新目录 dsh-token-quota/ ----
+const migDir = mkdtempSync(join(tmpdir(), "qm-migrate-"));
+const legacyPath = usageFilePath(migDir, LEGACY_DIR_NAME);
+saveUsageFile(legacyPath, { deepseek: { [recentKey]: 42 } }, 7);
+assert.equal(existsSync(legacyPath), true, "旧目录文件应已就位");
+const migratedPath = migrateUsageDir(migDir);
+assert.equal(migratedPath, usageFilePath(migDir), "应返回新目录路径");
+assert.equal(existsSync(legacyPath), false, "旧目录应已搬走");
+assert.deepEqual(loadUsageFile(migratedPath), { deepseek: { [recentKey]: 42 } }, "迁移后数据必须原样保留");
+console.log("✓ 改名迁移：旧用量目录搬到新目录且数据无损");
+
+// 新目录已存在时不动旧目录（避免覆盖现有数据）
+const legacyAgain = usageFilePath(migDir, LEGACY_DIR_NAME);
+saveUsageFile(legacyAgain, { stale: { [recentKey]: 1 } }, 7);
+const afterSecond = migrateUsageDir(migDir);
+assert.equal(afterSecond, usageFilePath(migDir), "已有新目录时仍用新目录");
+assert.deepEqual(loadUsageFile(afterSecond), { deepseek: { [recentKey]: 42 } }, "不得被旧目录覆盖");
+console.log("✓ 新目录已存在时不搬迁、不覆盖");
+
+// 两边都没有：返回新目录路径（首次安装的正常路径）
+const freshDir = mkdtempSync(join(tmpdir(), "qm-fresh-"));
+assert.equal(migrateUsageDir(freshDir), usageFilePath(freshDir), "全新安装应直接用新目录");
+console.log("✓ 全新安装：直接用新目录");
+
+rmSync(migDir, { recursive: true, force: true });
+rmSync(freshDir, { recursive: true, force: true });
 rmSync(dir, { recursive: true, force: true });
 console.log("\n存储单元测试全部通过 ✔");

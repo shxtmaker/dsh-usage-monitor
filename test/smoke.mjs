@@ -5,7 +5,7 @@
 // OpenAI/Anthropic 组织 AdminKey 用量与费用、OpenCode/Command Code 兼容来源。
 // 用法：node test/smoke.mjs
 import assert from "node:assert/strict";
-import { PROVIDERS } from "../lib/providers.js";
+import { PROVIDERS, resetAtMs } from "../lib/providers.js";
 
 let fetchCount = 0;
 const JSON_HEAD = { ok: true, status: 200, text: async () => "" };
@@ -232,3 +232,10 @@ assert.equal(formatMoney(88.4, "CNY"), "¥88.40");
 console.log("✓ 格式化：1.2M / 999 / $12.50 / ¥88.40");
 
 console.log("\n数据层冒烟测试全部通过 ✔");
+
+// 占位时刻（上游用 0 表示「无重置时刻」）必须等价于「没给」，不能被当成 1970 年的合法时刻
+assert.equal(resetAtMs(new Date(0)), null, "epoch 0 是占位，不是时刻");
+assert.equal(resetAtMs(0), null);
+assert.equal(resetAtMs(-1), null);
+assert.equal(resetAtMs(Date.UTC(2025, 7, 26, 5)), Date.UTC(2025, 7, 26, 5));
+console.log("✓ resetAtMs：占位/秒级值判为无时刻，真时刻原样通过");

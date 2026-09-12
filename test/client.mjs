@@ -87,7 +87,7 @@ test("wide strip renders three lines: title + today total / active supplier / me
   };
   // t 用词典式取值：{n} 占位符替换，函数式词条直接调用，与生产 LOCALES 形态一致
   const t = (key, params) => {
-    const dict = { title: "用量", today: "今日 {n}", quota: "限额", noneActive: "暂无调用", countBadge: "×{n}", justNow: "刚刚", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" };
+    const dict = { title: "用量", today: "今日 {n}", quota: "限额", noneActive: "暂无调用", countBadge: "×{n}", justNow: "刚刚", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m}m 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" };
     const v = dict[key] ?? (key === "stale" ? "近 {n}h 无流量" : key);
     return String(v).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
   };
@@ -124,7 +124,7 @@ test("a page with no calls shows 暂无调用 and never borrows another page's s
     suppliers: [{ id: "deepseek", name: "DeepSeek", current: true, todayTokens: 1200, state: "ok", headline: { kind: "pct", pct: "3%", reset: "—" }, entries: [] }],
   };
   const t = (key, params) => {
-    const dict = { title: "用量", today: "今日 {n}", noneActive: "暂无调用", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" };
+    const dict = { title: "用量", today: "今日 {n}", noneActive: "暂无调用", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m}m 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" };
     return String(dict[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
   };
   const Component = client(async () => ({ json: async () => state }));
@@ -143,7 +143,7 @@ test("a page with no calls shows 暂无调用 and never borrows another page's s
 
 test("?qm-strip=B|C switches the wide-strip layout variant", async () => {
   const state = { ok: true, trafficStale: false, active: { supplierId: "ds", name: "DeepSeek", model: "chat", at: Date.now() }, suppliers: [] };
-  const t = (key, params) => String({ title: "用量", today: "今日 {n}", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" }[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
+  const t = (key, params) => String({ title: "用量", today: "今日 {n}", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m}m 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" }[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
   const Component = client(async () => ({ json: async () => state }), [], { search: "?qm-strip=B" });
   let tree;
   try {
@@ -158,7 +158,7 @@ test("reset time is rendered as a precise countdown from resetAt", async () => {
   const t = (key, params) => {
     const dict = { title: "用量", today: "今日 {n}", quota: "限额", noneActive: "暂无调用", countBadge: "×{n}",
       connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个",
-      resetInHM: "{h}h{m} 后重置", resetInDH: "{d}d{h}h 后重置", resetSoon: "即将重置" };
+      resetInHM: "{h}h{m}m 后重置", resetInDH: "{d}d{h}h 后重置", resetSoon: "即将重置" };
     return String(dict[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
   };
   const render = async (headline, entry) => {
@@ -183,8 +183,8 @@ test("reset time is rendered as a precise countdown from resetAt", async () => {
   );
   const hmRemain = Math.floor((hmAt - Date.now()) / 60_000);
   assert.ok(
-    inHM === `限额 5% · 2h${String(hmRemain % 60).padStart(2, "0")} 后重置`
-      || inHM === `限额 5% · 2h${String((hmRemain + 1) % 60).padStart(2, "0")} 后重置`,
+    inHM === `限额 5% · 2h${String(hmRemain % 60).padStart(2, "0")}m 后重置`
+      || inHM === `限额 5% · 2h${String((hmRemain + 1) % 60).padStart(2, "0")}m 后重置`,
     `unexpected countdown: ${inHM}`,
   );
   // 1 天 19 小时后重置
@@ -200,6 +200,12 @@ test("reset time is rendered as a precise countdown from resetAt", async () => {
     { name: "窗口", pct: 1, reset: "—", resetAt: Date.now() - 1000 },
   );
   assert.equal(past, "限额 1% · 即将重置");
+  // 占位时刻（上游用 0 表示「没有重置时刻」）→ 不得算成「即将重置」，回落宿主文案
+  const bogus = await render(
+    { kind: "pct", pct: "4%", reset: "1月1日 重置", resetAt: 0 },
+    { name: "5h 窗口", pct: 4, reset: "1月1日 重置", resetAt: 0 },
+  );
+  assert.equal(bogus, "限额 4% · 1月1日 重置");
   // 只有文案、没有时刻 → 不猜，原样回落
   const fallback = await render(
     { kind: "pct", pct: "2%", reset: "约 5 小时后重置" },
@@ -210,7 +216,7 @@ test("reset time is rendered as a precise countdown from resetAt", async () => {
 
 test("connection status degrades on fetch failure and reports 未连接 only when nothing is configured", async () => {
   const t = (key, params) => {
-    const dict = { title: "用量", today: "今日 {n}", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" };
+    const dict = { title: "用量", today: "今日 {n}", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m}m 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" };
     return String(dict[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
   };
   const mk = (state) => client(async () => ({ json: async () => state }));
@@ -252,7 +258,7 @@ test("popover and detail card show the same precise reset countdown", async () =
       refresh: "刷新", usedShort: "已用", noData: "无数据", lastRefresh: "上次刷新", poll: "每 {n}s",
       detailTitle: "供应商限额明细", historySummary: "刷新历史（最近 {n} 条）", colTime: "时间", colSupplier: "供应商",
       colResult: "结果", colOk: "成功", colFail: "失败", colMain: "主指标", colNote: "备注", allConfigured: "全部（共 {n}）",
-      connOk: "已连接", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}d{h}h 后重置", resetSoon: "即将重置" };
+      connOk: "已连接", resetInHM: "{h}h{m}m 后重置", resetInDH: "{d}d{h}h 后重置", resetSoon: "即将重置" };
     return String(dict[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
   };
   const at = Date.now() + (5 * 60 + 7) * 60_000 + 30_000;
@@ -270,12 +276,12 @@ test("popover and detail card show the same precise reset countdown", async () =
     await act(async () => { tree.root.findByProps({ "data-qm-variant": "A" }).props.onClick(); });
     const row = tree.root.findByProps({ className: "qm-srow-entry" });
     const rowText = textOf(row);
-    assert.match(rowText, /5h\d\d 后重置/, `popover 应显示精确倒计时: ${rowText}`);
+    assert.match(rowText, /5h\d\dm 后重置/, `popover 应显示精确倒计时: ${rowText}`);
     assert.ok(!rowText.includes("约 5 小时后重置"), "popover 不该再显示四舍五入文案");
     // 详情弹层：从 Popover 进入
     const detailBtn = tree.root.findAllByType("button").find((b) => b.children.includes("详情"));
     await act(async () => { detailBtn.props.onClick(); });
     const card = tree.root.findByProps({ className: "qm-card-item" });
-    assert.match(textOf(card), /5h\d\d 后重置/, "详情卡片应显示同一倒计时");
+    assert.match(textOf(card), /5h\d\dm 后重置/, "详情卡片应显示同一倒计时");
   } finally { await act(async () => { tree?.unmount(); }); }
 });

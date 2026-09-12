@@ -1,6 +1,6 @@
-# dsh-usage-monitor（用量监控）
+# dsh-token-quota（用量监控）
 
-当前版本：**v1.1.1**（2026-09-12）。
+当前版本：**v1.1.2**（2026-09-12）。
 
 DeepSeek Harness 插件：显示各供应商**可用周期限额 / 余额 / 报告用量费用**——sidebar 脚部小组件 + 详情页。
 
@@ -28,6 +28,13 @@ DeepSeek Harness 插件：显示各供应商**可用周期限额 / 余额 / 报�
 无限额度 / 未知余额 / 缺字段保留未知，不冒充零值；分页失败不发布部分总数；不同币种、窗口、来源不相加。
 Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登录）按规格丢弃——Codex 需本机 CLI 登录态，不适用于服务端 DSH，不注册。
 
+## v1.1.2 新增
+
+- **插件改名**：`dsh-usage-monitor` → **`dsh-token-quota`**（npm / GitHub / Gitea 三处均可用，未与既有两个同类插件 `dsh-quota-monitor`、`dsh-quota-panel` 重名）。随之变更的运行标识：client 模块 id、`sidebar.footer.action` 槽位 key、`settings.plugin.item` key、HTTP 前缀 `/api/dsh-token-quota/*`、settings 命名空间 `dsh-token-quota`、用量目录 `<DSH_HOME>/dsh-token-quota/`。
+- **改名自动迁移（旧数据不丢）**：启动时 ① 用量目录 `<DSH_HOME>/quota-monitor/` → `<DSH_HOME>/dsh-token-quota/`（只在「旧目录存在且新目录不存在」时搬一次；搬不动则回落旧路径继续读，下次启动再试，绝不删旧数据）；② settings 命名空间 `quota-monitor` → `dsh-token-quota`（新命名空间为空且旧的有用户配置时整段拷贝，含已填密钥；**旧命名空间保留**，可确认无误后手动清理）。
+- **修复：倒计时小时档漏掉分钟单位**：`5h07 后重置` → **`5h07m 后重置`**（`resetInHM` 词条补 `m`；`*d*h` 档保持不带分钟）。
+- **修复：占位重置时刻**：上游在「没有重置时刻」时用 `0` 占位（真实样本：Command Code `windowLimits` 缺失时 `resetAt: 0`）。此前该值会被当作 1970 年的合法时刻，画出「即将重置」这种上游从未说过的结论；现在 `resetAtMs()` 只接受 epoch-毫秒（> 1e9），占位值等价于「没给」，客户端回落宿主文案。
+
 ## v1.1.1 新增
 
 - **小组件多行化**：宽栏紧凑条由单行改为**三行**——① 连接状态 · 今日 token 消耗（· `×N` 候选计数）② 在用供应商 · 模型 ③ 限额状态 · 重置倒计时。第 2/3 行同字号（12px，层级靠颜色）、单行省略 + `title` 兜底全文；**容器宽 < 200px**（侧栏被拖窄）时自动收起第 3 行。不再显示「最近一次调用」的相对时间。
@@ -38,7 +45,7 @@ Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登
 ## v1.1 新增
 
 - **设置页「仅显示已添加」**：供应商目录与详情页分栏只显示**已添加供应商**——服务端推导（最新 DSH 探测命中 ∨ 已启用 ∨ 任一密钥已填；仅改阈值/Base URL 不算；显式停用但有密钥仍显示）。未添加的收进目录底部**「可添加供应商」折叠列表**，每项「打开配置 → 添加」，保存后即加入主目录。
-- **重新扫描按钮（标题行）**：设置目录标题行显示「已接入 N」计数芯片 + **⟳ 重新扫描**，结果独立一行（接入名单 / 最近扫描时间 / 失败原因）。按钮触发 `POST /api/quota-monitor/rescan`，与周期自动探测完全一致（幂等自动填入、尊重手动密钥与显式关闭）；发现新的可添加供应商时**自动展开并高亮**。
+- **重新扫描按钮（标题行）**：设置目录标题行显示「已接入 N」计数芯片 + **⟳ 重新扫描**，结果独立一行（接入名单 / 最近扫描时间 / 失败原因）。按钮触发 `POST /api/dsh-token-quota/rescan`，与周期自动探测完全一致（幂等自动填入、尊重手动密钥与显式关闭）；发现新的可添加供应商时**自动展开并高亮**。
 - **窗口用量重置时间补齐（Command Code）**：5h / 周窗口的 `resetAt`（真实契约 = epoch-毫秒，已用真实账户复核）经宽容解析显示「约 X 小时后重置 / M月D日 重置」；月额度显示订阅周期结束 `currentPeriodEnd`（缺省如实标注，绝不把 `currentPeriodStart` 当重置）；窗口确实未提供重置时刻的行如实标注「未提供重置时刻」，不伪造。
 - **供应商配置页「当前额度」预览**：独立配置页展示最近一次取数的限额条目（含重置时间），与小组件 Popover / 详情卡片同一份数据、同一套**重置倒计时**（`*h*m` / `*d*h`，无原始时刻时回落宿主文案）→ **四处一致**。
 
@@ -49,8 +56,8 @@ Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登
 - **设置**：原生设置卡片 + 详情页内面板；配置界面为「**供应商页目录（仅显示已添加）→ 每个供应商独立配置页**」——目录行内可直接启停/测试连接，点「打开配置」进入该供应商单页（凭据类别徽标、**当前额度预览**、按 needs 动态渲染的密钥字段、Base URL/警告·临界阈值、测试连接、保存）；目录底部「可添加供应商」折叠列表提供手动添加入口；标题行含 **⟳ 重新扫描** 与最近扫描结果；全局轮询间隔/保留期单独一组；OpenCode 页含 allowance Token 与 org id
 - **调度**：默认 60s 轮询（10–3600 可配）；同供应商 in-flight 合并去重；失败指数退避（30s→1m→2m→4m→10m；401/403 → 30min）；手动刷新立即执行
 - **历史**：每供应商最近 50 条、全局 500 条（内存，重启即清）
-- **本地用量数据**：当日 token 消耗按「供应商 × 小时桶」落盘（`$DSH_HOME/quota-monitor/usage.json`，原子写、防抖 2s），按保留期修剪（默认 7 天，1–90 可配）
-- **密钥**：DSH settings 命名空间 `quota-monitor`（`role('secret')` 脱敏、热重载、原子写）
+- **本地用量数据**：当日 token 消耗按「供应商 × 小时桶」落盘（`$DSH_HOME/dsh-token-quota/usage.json`，原子写、防抖 2s），按保留期修剪（默认 7 天，1–90 可配）
+- **密钥**：DSH settings 命名空间 `dsh-token-quota`（`role('secret')` 脱敏、热重载、原子写）
 - **各 API key 自动识别（v0.3 起）**：启动 / settings 热重载 / `llm/adapters-updated` / `credentials/reference-updated` 时，以 **DSH 接缝为准**探测 `llm-deepseek` 配置节与 `llm-pi-ai.providers` 字典（`ctx.llm` 目录/存活路由补充，凭据经 `ctx.credentials` 解析后回退 `process.env`），把每把普通 Key 归属到对应供应商（路由名精确/前缀 + 官方主机兜底归类）→ 自动启用 + 官方 Base URL（DSH 路由地址在白名单内才采用）+ **API Key 本体拷贝**（仅插件侧为空时填写，手动 Key 不覆盖、显式关闭不复活）。凭据类别守门：**DSH 普通聊天 Key 绝不套用到需要 Admin/Management Key 的组织/账户供应商**——OpenAI/Anthropic 聊天路由探测后仅提示「需 Admin Key 手动配置」；此类页面出现时设置面板标注手动填写。
 
 ## 客户端渲染契约
@@ -59,10 +66,10 @@ Windows 专属方法（WebView2 控制台、本地 SQLite、本机 Codex CLI 登
 
 | 槽位 | 注册 id/key | 内容 |
 |---|---|---|
-| `sidebar.footer.action`（list） | `id: quota-monitor` | 小组件主体：宽栏紧凑条三行（连接状态 · 今日 token / 在用供应商 · 模型 / 元信息）+ rail 图标态；跟随 `sessions.list.current` 切页即时重拉；Popover 与弹层经 `createPortal` 挂 body |
+| `sidebar.footer.action`（list） | `id: dsh-token-quota` | 小组件主体：宽栏紧凑条三行（连接状态 · 今日 token / 在用供应商 · 模型 / 元信息）+ rail 图标态；跟随 `sessions.list.current` 切页即时重拉；Popover 与弹层经 `createPortal` 挂 body |
 
 宽栏紧凑条支持布局变体 `?qm-strip=A|B|C`（A 三行堆叠，默认；B 状态点锚供应商行 + 元信息分隔线；C 两列网格、今日量右置）用于定稿比较；**定稿后删除未选变体与该开关**。
-| `settings.plugin.item` | `key: quota-monitor` | 设置页「插件清单 → 用量监控」卡片 |
+| `settings.plugin.item` | `key: dsh-token-quota` | 设置页「插件清单 → 用量监控」卡片 |
 
 依赖声明只列 boot graph 内真实存在的包；Popover 采用官方「贴底展开」定位；详情/设置是居中 overlay。客户端代码由宿主按 rev 重新下发，覆盖文件后刷新浏览器即可生效（无需重新构建插件）。
 
@@ -85,7 +92,7 @@ test/mock-dsh.mjs 宿主半集成冒烟（Mock ctx + fetch；含 added 推导与
 test/storage.mjs  本地用量数据存储单元测试
 ```
 
-宿主路由（loopback 同源守卫）：`GET /api/quota-monitor/state[?session=<会话id>]`（含探测诊断 detect、每供应商 needs/meta 元数据与 `added/addedReason`；带 `?session=` 时 `active` 为该会话页最近一次调用，空串/未知会话=暂无，缺参=全局最近一次）·
+宿主路由（loopback 同源守卫）：`GET /api/dsh-token-quota/state[?session=<会话id>]`（含探测诊断 detect、每供应商 needs/meta 元数据与 `added/addedReason`；带 `?session=` 时 `active` 为该会话页最近一次调用，空串/未知会话=暂无，缺参=全局最近一次）·
 `POST /refresh`（同样支持 `?session=` 保持会话范围）· `POST /test`（`{supplier}`）· `POST /settings`（深合并，密钥留空 = 不变）·
 `POST /rescan`（手动触发与周期自动探测一致的 DSH 扫描 + 自动填入，返回与 /state 相同载荷）。
 
@@ -94,7 +101,7 @@ test/storage.mjs  本地用量数据存储单元测试
 ```bash
 # 1. 添加插件（link 安装，目录即本仓库；或 npm pack 出的 tgz 安装）
 dsh plugin --profile web add link:/run/media/lin-qingyue/AI\ Project/DeepSeek\ harness/插件开发/用量监控
-#   或 dsh plugin --profile web add ./dsh-usage-monitor-1.1.0.tgz
+#   或 dsh plugin --profile web add ./dsh-token-quota-1.1.2.tgz
 
 # 2. 重启 web GUI 使补丁生效（会中断当前会话）
 dsh --profile web
@@ -102,7 +109,7 @@ dsh --profile web
 
 装好后在 DSH 设置页（插件清单 → 用量监控卡片）配置各供应商密钥，或点小组件「详情 → 设置」。
 升级：v0.x/v1.0 → v1.1 直接把仓库文件覆盖到已安装插件目录
-（`~/.dsh/profiles/web/node_modules/dsh-quota-monitor`）后刷新浏览器 / 重启 web GUI 即可；
+（`~/.dsh/profiles/web/node_modules/dsh-token-quota`）后刷新浏览器 / 重启 web GUI 即可；
 旧 settings 中已配置供应商原样保留，新增供应商默认关闭、探测到 DSH 对应密钥后自动启用。
 
 ## 测试
@@ -117,8 +124,8 @@ node test/storage.mjs    # 本地用量数据存储
 
 ## 仓库
 
-源码：[github.com/shxtmaker/dsh-usage-monitor](https://github.com/shxtmaker/dsh-usage-monitor)
-内网镜像：[http://192.168.3.100:3300/lqy/dsh-usage-monitor](http://192.168.3.100:3300/lqy/dsh-usage-monitor)
+源码：[github.com/shxtmaker/dsh-token-quota](https://github.com/shxtmaker/dsh-token-quota)
+内网镜像：[http://192.168.3.100:3300/lqy/dsh-token-quota](http://192.168.3.100:3300/lqy/dsh-token-quota)
 上游查询覆盖：[Token-Consumption-Monitoring docs/query-coverage.md](http://192.168.3.100:3300/lqy/Token-Consumption-Monitoring/src/branch/main/docs/query-coverage.md)
 
 ## 已知限制与后续

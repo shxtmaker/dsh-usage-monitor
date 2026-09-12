@@ -21,7 +21,7 @@ test("plugin instances do not share traffic and dispose releases event handlers"
     instances.push(dispose);
     return { events, state() {
       let state;
-      routes.get("/api/quota-monitor/state")({ method: "GET", headers: {}, url: "/api/quota-monitor/state" },
+      routes.get("/api/dsh-token-quota/state")({ method: "GET", headers: {}, url: "/api/dsh-token-quota/state" },
         { writeHead() {}, end(value) { state = JSON.parse(value); } });
       return state;
     } };

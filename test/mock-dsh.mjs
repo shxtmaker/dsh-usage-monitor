@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { apply } from "../lib/index.js";
 import { hourKeyOf, loadUsageFile, usageFilePath } from "../lib/storage.js";
 
-const NS = "quota-monitor";
+const NS = "dsh-token-quota";
 // 初始：三家都未配置（模拟新装插件），等待自动探测接入
 const BACKING = {
   suppliers: {
@@ -151,7 +151,7 @@ console.log("✓ 自动探测：6 个普通 Key 供应商自动启用 + 官方 b
 
 // ---- 路由表 ----
 const paths = ctx._routes.map((r) => r.path);
-assert.deepEqual(paths, ["/api/quota-monitor/state", "/api/quota-monitor/refresh", "/api/quota-monitor/test", "/api/quota-monitor/settings", "/api/quota-monitor/rescan"]);
+assert.deepEqual(paths, ["/api/dsh-token-quota/state", "/api/dsh-token-quota/refresh", "/api/dsh-token-quota/test", "/api/dsh-token-quota/settings", "/api/dsh-token-quota/rescan"]);
 
 const call = async (path, body, headers = { origin: "" }, method = String(path).split("?")[0].endsWith("/state") ? "GET" : "POST") => {
   const route = ctx._routes.find((r) => r.path === String(path).split("?")[0]);
@@ -164,13 +164,13 @@ const call = async (path, body, headers = { origin: "" }, method = String(path).
 };
 
 // ---- HTTP method and origin contract ----
-assert.equal((await call("/api/quota-monitor/refresh", null, {}, "GET")).status, 405);
-assert.equal((await call("/api/quota-monitor/state", null, { origin: "http://localhost:3001", host: "localhost:3000" })).status, 403);
-assert.equal((await call("/api/quota-monitor/state", null, { origin: "http://[::1]:3000", host: "[::1]:3000" })).status, 200);
-assert.equal((await call("/api/quota-monitor/test", { supplier: "toString" })).status, 400);
+assert.equal((await call("/api/dsh-token-quota/refresh", null, {}, "GET")).status, 405);
+assert.equal((await call("/api/dsh-token-quota/state", null, { origin: "http://localhost:3001", host: "localhost:3000" })).status, 403);
+assert.equal((await call("/api/dsh-token-quota/state", null, { origin: "http://[::1]:3000", host: "[::1]:3000" })).status, 200);
+assert.equal((await call("/api/dsh-token-quota/test", { supplier: "toString" })).status, 400);
 
 // ---- state ----
-const s1 = await call("/api/quota-monitor/state");
+const s1 = await call("/api/dsh-token-quota/state");
 assert.equal(s1.status, 200);
 const ds = s1.payload.suppliers.find((s) => s.id === "deepseek");
 assert.equal(ds.state, "ok");
@@ -224,7 +224,7 @@ console.log("✓ state：deepseek ok、5 家自动接入、detectedUnmapped=[ope
 // ---- 流量兜底（用户报告「小组件信息消失」）：有事件但无任何可用近期流量 → 按启用清单显示 ----
 const emit = (e) => { for (const cb of ctx._events["session/event"]) cb(null, e); };
 emit({ type: "assistant/message", data: { source: { provider: "unknown-route-xyz", model: "m" }, usage: { uncachedInputTokens: 1, outputTokens: 1 } } });
-const sX = await call("/api/quota-monitor/state");
+const sX = await call("/api/dsh-token-quota/state");
 assert.equal(sX.payload.trafficStale, true, "无近期可用流量时应标记 trafficStale");
 for (const id of ["deepseek", "opencode", "commandcode", "openrouter", "moonshot-cn", "zai-cn"]) {
   assert.equal(sX.payload.suppliers.find((s) => s.id === id).current, true, id + " 应兜底按启用清单显示");
@@ -232,7 +232,7 @@ for (const id of ["deepseek", "opencode", "commandcode", "openrouter", "moonshot
 console.log("✓ 流量兜底：无近期可用流量时小组件按启用清单显示（trafficStale=true）");
 assert.equal(sX.payload.active, null, "未映射路由（unknown-route-xyz）不产生 active");
 emit({ type: "assistant/message", data: { source: { provider: "deepseek-official", model: "deepseek-v3" }, usage: { uncachedInputTokens: 1000, outputTokens: 500 } } });
-const s2 = await call("/api/quota-monitor/state");
+const s2 = await call("/api/dsh-token-quota/state");
 assert.equal(s2.payload.suppliers.find((s) => s.id === "deepseek").todayTokens, 1500);
 assert.equal(s2.payload.suppliers.find((s) => s.id === "deepseek").current, true);
 assert.equal(s2.payload.active?.supplierId, "deepseek", "最近一次调用 → 小组件显示 DeepSeek");
@@ -248,7 +248,7 @@ emit({ type: "request/header", data: { header: { config: { provider: "commandcod
 emit({ type: "assistant/chunk", data: { turn: 1, step: 1, chunk: { type: "usage", usage: { inputTokens: 200, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 5 } } } });
 emit({ type: "assistant/message", data: { turn: 1, step: 1, message: { source: { provider: "commandcode-goat", model: "cc-model" } }, usage: { inputTokens: 300, outputTokens: 60 } } });
 emit({ type: "assistant/message", data: { turn: 1, step: 2, message: { source: { provider: "commandcode-goat", model: "cc-model" } }, usage: { inputTokens: 40 } } });
-const s4 = await call("/api/quota-monitor/state");
+const s4 = await call("/api/dsh-token-quota/state");
 const cc2 = s4.payload.suppliers.find((s) => s.id === "commandcode");
 assert.equal(cc2.current, true, "真实 DSH 载荷应驱动 commandcode 进入当前集（而非流量兜底）");
 assert.equal(s4.payload.trafficStale, false, "观测到真实流量后不得再标 近24h无流量");
@@ -273,48 +273,48 @@ assert.equal(s4.payload.poll.retentionDays, 7, "默认保留期应为 7 天");
 console.log(`✓ 本地用量数据落盘：${usageFile}（commandcode=400，deepseek=1500，载入回读一致）`);
 
 // ---- 用户显式关闭后不被自动探测再次启用（用自动接入的 opencode 验证） ----
-await call("/api/quota-monitor/settings", { suppliers: { opencode: { enabled: false } } });
+await call("/api/dsh-token-quota/settings", { suppliers: { opencode: { enabled: false } } });
 await new Promise((r) => setTimeout(r, 3500)); // 等自动探测周期复查
 assert.equal(resolved.suppliers.opencode.enabled, false, "用户显式关闭后自动探测不得重新启用");
 console.log("✓ 用户显式关闭 → 自动探测尊重关闭");
 
 // ---- settings 热更新 ----
-await call("/api/quota-monitor/settings", { intervalSeconds: 30, suppliers: { commandcode: { enabled: true, apiKey: "sk-cc" }, deepseek: { enabled: true, apiKey: "" } } });
+await call("/api/dsh-token-quota/settings", { intervalSeconds: 30, suppliers: { commandcode: { enabled: true, apiKey: "sk-cc" }, deepseek: { enabled: true, apiKey: "" } } });
 assert.equal(resolved.intervalSeconds, 30);
 assert.equal(resolved.suppliers.deepseek.apiKey, "file-sk-DEEPSEEK_API_KEY", "空白密钥补丁保留已存凭据");
 assert.equal(resolved.suppliers.commandcode.enabled, true);
-const s3 = await call("/api/quota-monitor/state");
+const s3 = await call("/api/dsh-token-quota/state");
 assert.equal(s3.payload.poll.intervalSeconds, 30);
 console.log("✓ settings 路由深合并生效（interval=30，commandcode 启用）");
 
 // ---- added 推导：仅启用（无探测无密钥）→ addedReason=enabled ----
-await call("/api/quota-monitor/settings", { suppliers: { "openai-org": { enabled: true } } });
-const sE = await call("/api/quota-monitor/state");
+await call("/api/dsh-token-quota/settings", { suppliers: { "openai-org": { enabled: true } } });
+const sE = await call("/api/dsh-token-quota/state");
 const oiE = sE.payload.suppliers.find((x) => x.id === "openai-org");
 assert.equal(oiE.added, true, "仅启用（无密钥、未探测）→ 已添加");
 assert.equal(oiE.addedReason, "enabled");
-await call("/api/quota-monitor/settings", { suppliers: { "openai-org": { enabled: false } } });
+await call("/api/dsh-token-quota/settings", { suppliers: { "openai-org": { enabled: false } } });
 console.log("✓ added 推导：探测到→detected；仅启用→enabled；未触碰→不算");
 
 // ---- R2：POST /rescan 复用周期自动探测（幂等、尊重显式关闭）并返回 /state 载荷 ----
-const rsc = await call("/api/quota-monitor/rescan");
+const rsc = await call("/api/dsh-token-quota/rescan");
 assert.equal(rsc.status, 200);
 assert.equal(rsc.payload.ok, true);
 assert.equal(rsc.payload.suppliers.find((x) => x.id === "opencode").added, true, "opencode 仍被 DSH 探测 → 探测到即已添加（即使被用户显式关闭）");
 assert.equal(resolved.suppliers.opencode.enabled, false, "rescan 不得重新启用用户显式关闭的供应商");
 assert.ok(rsc.payload.detect.at, "rescan 后 detect.at 已刷新");
 assert.ok(rsc.payload.detect.found.includes("commandcode"));
-assert.equal((await call("/api/quota-monitor/rescan", null, {}, "GET")).status, 405, "rescan 仅接受 POST");
+assert.equal((await call("/api/dsh-token-quota/rescan", null, {}, "GET")).status, 405, "rescan 仅接受 POST");
 console.log("✓ POST /rescan：单实例扫描 + 自动填入幂等 + 尊重显式关闭 + 返回 state 载荷");
 
 // ---- test 路由：401 → ok:false auth ----
-const t = await call("/api/quota-monitor/test", { supplier: "commandcode" });
+const t = await call("/api/dsh-token-quota/test", { supplier: "commandcode" });
 assert.equal(t.payload.ok, false);
 assert.match(t.payload.error || "", /401/);
 console.log("✓ test 路由：commandcode 401 →", t.payload.error);
 
 // ---- refresh 路由（deepseek 强制刷新成功）----
-const r = await call("/api/quota-monitor/refresh");
+const r = await call("/api/dsh-token-quota/refresh");
 assert.equal(r.payload.suppliers.find((s) => s.id === "deepseek").state, "ok");
 assert.equal(r.payload.history.filter((h) => h.supplier === "deepseek").length >= 1, true);
 console.log("✓ refresh 路由 + 刷新历史记录");
@@ -325,32 +325,32 @@ const sessA = { id: "session-a" };
 const sessB = { id: "session-b" };
 emitTo(sessA, { type: "assistant/message", data: { source: { provider: "deepseek-official", model: "ds-page-v3" }, usage: { inputTokens: 10 } } });
 emitTo(sessB, { type: "assistant/message", data: { source: { provider: "commandcode-goat", model: "cc-page" }, usage: { inputTokens: 20 } } });
-const pa = await call("/api/quota-monitor/state?session=session-a");
+const pa = await call("/api/dsh-token-quota/state?session=session-a");
 assert.equal(pa.payload.activeScope, "session-a");
 assert.equal(pa.payload.active?.supplierId, "deepseek", "页 A 显示 A 的最近调用（DeepSeek）");
 assert.equal(pa.payload.active?.model, "ds-page-v3");
-const pb = await call("/api/quota-monitor/state?session=session-b");
+const pb = await call("/api/dsh-token-quota/state?session=session-b");
 assert.equal(pb.payload.active?.supplierId, "commandcode", "页 B 显示 B 的最近调用（Command Code）");
 assert.equal(pb.payload.active?.model, "cc-page");
-const pg = await call("/api/quota-monitor/state"); // 不带参数 = 全局最近一次（旧语义兜底）
+const pg = await call("/api/dsh-token-quota/state"); // 不带参数 = 全局最近一次（旧语义兜底）
 assert.equal(pg.payload.activeScope, null);
 assert.equal(pg.payload.active?.supplierId, "commandcode");
-const pn = await call("/api/quota-monitor/state?session=");
+const pn = await call("/api/dsh-token-quota/state?session=");
 assert.equal(pn.payload.activeScope, "");
 assert.equal(pn.payload.active, null, "无当前页（空 session）严格显示暂无调用");
-const px = await call("/api/quota-monitor/state?session=session-unknown");
+const px = await call("/api/dsh-token-quota/state?session=session-unknown");
 assert.equal(px.payload.active, null, "未知会话页同样严格为空");
 // 页 A 内再次调用 → 只影响 A；切回 B 仍是 B 的调用
 emitTo(sessA, { type: "assistant/message", data: { source: { provider: "opencode-go", model: "oc-page" }, usage: { inputTokens: 30 } } });
-const pa2 = await call("/api/quota-monitor/state?session=session-a");
+const pa2 = await call("/api/dsh-token-quota/state?session=session-a");
 assert.equal(pa2.payload.active?.supplierId, "opencode", "页 A 的最近调用更新为 OpenCode");
 assert.equal(pa2.payload.active?.model, "oc-page");
-const pb2 = await call("/api/quota-monitor/state?session=session-b");
+const pb2 = await call("/api/dsh-token-quota/state?session=session-b");
 assert.equal(pb2.payload.active?.supplierId, "commandcode", "页 B 不受页 A 新调用影响");
-const pg2 = await call("/api/quota-monitor/state");
+const pg2 = await call("/api/dsh-token-quota/state");
 assert.equal(pg2.payload.active?.supplierId, "opencode", "全局最近一次跟随最后一次事件");
 // refresh 也保持会话范围（手动刷新后不应把另一页的 active 带回来）
-const rf = await call("/api/quota-monitor/refresh?session=session-b");
+const rf = await call("/api/dsh-token-quota/refresh?session=session-b");
 assert.equal(rf.payload.activeScope, "session-b");
 assert.equal(rf.payload.active?.supplierId, "commandcode", "refresh 后仍显示当前页 B 的在用供应商");
 console.log("✓ 当前显示页：A/B 会话独立最近调用、空/未知页严格为空、refresh 保持会话范围");

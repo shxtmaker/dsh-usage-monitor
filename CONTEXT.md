@@ -1,4 +1,4 @@
-# Supplier Quota Monitor (用量监控)
+# dsh-token-quota (用量监控)
 
 A DeepSeek Harness (DSH) plugin that displays each LLM supplier's available period quota / balance / reported usage & cost. Since v0.3 the data layer tracks Token-Consumption-Monitoring `main` (v1.3.x) [docs/query-coverage.md](http://192.168.3.100:3300/lqy/Token-Consumption-Monitoring/src/branch/main/docs/query-coverage.md): supplier registry is split by **凭据类别 × 地域** (13 entries, metadata-driven), with auto-identification of every plain API key found in the DSH harness. This context covers the plugin's domain: suppliers, credentials classes, quotas, the sidebar strip's current-in-use supplier display, and the widget that shows them.
 
@@ -44,7 +44,7 @@ v0.3 auto-detect: every plain API key present in the DSH seam (`llm-deepseek` se
 _Avoid_: guessing by key prefix (upstream forbids it)
 
 **小组件 (Widget)**:
-The compact, always-visible DSH GUI display showing the harness's connection to the plugin and which model supplier the currently displayed page is using. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `quota-monitor`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses. Since v1.2 the wide strip is **three lines**: **连接状态** · **当日消耗量** · the candidate count (line 1), the **在用供应商** of the **当前显示页** (line 2; the session selected in the session browser = official `sessions.list.current`; the client subscribes and refetches immediately on page switch), then the page's meta line — quota state and **重置倒计时** (line 3). Its Popover lists **当前供应商** quota entries.
+The compact, always-visible DSH GUI display showing the harness's connection to the plugin and which model supplier the currently displayed page is using. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `dsh-token-quota`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses. Since v1.2 the wide strip is **three lines**: **连接状态** · **当日消耗量** · the candidate count (line 1), the **在用供应商** of the **当前显示页** (line 2; the session selected in the session browser = official `sessions.list.current`; the client subscribes and refetches immediately on page switch), then the page's meta line — quota state and **重置倒计时** (line 3). Its Popover lists **当前供应商** quota entries.
 _Avoid_: panel, card
 
 **当前显示页 (Current Page)**:
@@ -72,7 +72,7 @@ Token consumption attributed per supplier from DSH session events, aggregated ov
 _Avoid_: today's usage, daily token count
 
 **本地用量数据 (Local Usage Data)**:
-The plugin's token-consumption statistics persisted as supplier × hourly buckets in `$DSH_HOME/quota-monitor/usage.json` (atomic write with a 2s debounce), surviving restarts and pruned by the **保留期**. Distinct from the in-memory **刷新历史**.
+The plugin's token-consumption statistics persisted as supplier × hourly buckets in `$DSH_HOME/dsh-token-quota/usage.json` (atomic write with a 2s debounce), surviving restarts and pruned by the **保留期**. Distinct from the in-memory **刷新历史**.
 _Avoid_: local cache, on-disk history, cloud stats
 
 **保留期 (Retention Window)**:
