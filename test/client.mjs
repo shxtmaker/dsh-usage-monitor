@@ -5,14 +5,23 @@ import vm from "node:vm";
 import React from "react";
 import { create, act } from "react-test-renderer";
 
-function client(fetch, timers = []) {
+function client(fetch, timers = [], location = { search: "" }) {
   let plugin;
   const slots = {};
+  const listeners = {};
   const document = { querySelector() { return true; }, body: {}, addEventListener() {}, removeEventListener() {} };
-  vm.runInNewContext(readFileSync(new URL("../lib/client.js", import.meta.url), "utf8"), {
-    window: { __ModuleLoader__: { load({ factory }) {
+  const window = {
+    __ModuleLoader__: { load({ factory }) {
       plugin = factory((id) => id === "react" ? React : { createPortal: (child) => child });
-    } } }, document, fetch, console,
+    } },
+    location,
+    addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+    removeEventListener(type, fn) {
+      if (listeners[type]) listeners[type] = listeners[type].filter((f) => f !== fn);
+    },
+  };
+  vm.runInNewContext(readFileSync(new URL("../lib/client.js", import.meta.url), "utf8"), {
+    window, document, fetch, console, globalThis: { location },
     setInterval(fn) { timers.push(fn); return fn; }, clearInterval() {},
   });
   plugin.apply({ locale: { register() {} }, effect() {}, slots: {
@@ -20,7 +29,19 @@ function client(fetch, timers = []) {
   } });
   return slots["sidebar.footer.action"];
 }
-const payload = (name) => ({ ok: true, suppliers: [], active: { name, model: "model", at: Date.now() } });
+
+const payload = (name) => ({ ok: true, traffic: { channelAlive: true }, suppliers: [], active: { name, model: "model", at: Date.now() } });
+const lines = (tree) => ({
+  l1: tree.root.findByProps({ className: "qm-l1" }),
+  l2: tree.root.findByProps({ className: "qm-l2" }),
+  l3: tree.root.findByProps({ className: "qm-l3" }),
+});
+// React 元素的文本可能嵌在 span 里，递归取全部文本节点
+const textOf = (node) => {
+  const walk = (c) => Array.isArray(c) ? c.map(walk).join("") : typeof c === "string" ? c : c?.children ? walk(c.children) : "";
+  return walk(node.children ?? node);
+};
+
 test("collapsed sidebar click opens and closes the detail dialog", async () => {
   const Component = client(async () => ({ json: async () => payload("A") }));
   let tree;
@@ -45,6 +66,216 @@ test("late state responses cannot overwrite a newer poll", async () => {
     await act(async () => { timers[0](); });
     await act(async () => { pending[1]({ json: async () => payload("new") }); });
     await act(async () => { pending[0]({ json: async () => payload("old") }); });
-    assert.ok(tree.root.findByProps({ className: "qm-strip-summary" }).children[0].includes("new"));
+    assert.ok(textOf(lines(tree).l2).includes("new"));
+    assert.ok(!textOf(lines(tree).l2).includes("old"));
+  } finally { await act(async () => { tree?.unmount(); }); }
+});
+
+test("wide strip renders three lines: title + today total / active supplier / meta", async () => {
+  const state = {
+    ok: true,
+    traffic: { channelAlive: true },
+    trafficStale: false,
+    active: { supplierId: "opencode", name: "OpenCode", model: "deepseek-v4.1-flash", at: Date.now() - 5000 },
+    suppliers: [
+      { id: "opencode", name: "OpenCode", current: true, todayTokens: 64_429_367, state: "ok",
+        headline: { kind: "pct", pct: "5%", reset: "约 2 小时后重置" },
+        entries: [{ name: "5h 滚动", pct: 5, reset: "约 2 小时后重置" }, { name: "周用量", pct: 2, reset: "9月14日 重置" }] },
+      { id: "deepseek", name: "DeepSeek", current: true, todayTokens: 1_318_275, state: "ok",
+        headline: { kind: "amt", amt: "¥41.99", reset: "—" }, entries: [] },
+    ],
+  };
+  // t 用词典式取值：{n} 占位符替换，函数式词条直接调用，与生产 LOCALES 形态一致
+  const t = (key, params) => {
+    const dict = { title: "用量", today: "今日 {n}", quota: "限额", noneActive: "暂无调用", countBadge: "×{n}", justNow: "刚刚", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" };
+    const v = dict[key] ?? (key === "stale" ? "近 {n}h 无流量" : key);
+    return String(v).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
+  };
+  const Component = client(async () => ({ json: async () => state }));
+  let tree;
+  try {
+    await act(async () => { tree = create(React.createElement(Component, { wide: true, t })); });
+    const { l1, l2, l3 } = lines(tree);
+    const strip = tree.root.findByProps({ "data-qm-variant": "A" });
+    // 第 1 行：标题 + 今日全局总量（64.4M + 1.3M = 65.7M）
+    assert.equal(textOf(l1), "已连接·今日 65.7M×2");
+    // 第 2 行：在用供应商 · 模型
+    assert.equal(textOf(l2), "OpenCode · deepseek-v4.1-flash");
+    // 第 3 行：相对时间 · 限额（headline 的 5%）· 最紧条目的重置时间 · ×N 候选
+    // 条目无 resetAt ⇒ 回落宿主文案；第 3 行不再含相对调用时间，也不含 ×N（已移到第 1 行）
+    assert.equal(textOf(l3), "限额 5% · 约 2 小时后重置");
+    assert.ok(!textOf(l3).includes("刚刚"));
+    assert.ok(!textOf(l3).includes("×2"));
+    // ×N 跟在第 1 行今日用量之后
+    assert.ok(textOf(l1).endsWith("今日 65.7M×2"));
+    assert.equal(tree.root.findByProps({ className: "qm-count" }).props.children, "×2");
+    assert.equal(l3.props.title, textOf(l3));
+    // 截断兜底：按钮 title = 状态/元信息 + 今日量；第 2 行自身 title = 完整「供应商 · 模型」
+    assert.ok(strip.props.title.includes("今日 65.7M"));
+    assert.equal(l2.findByProps({ className: "qm-strip-summary" }).props.title, "OpenCode · deepseek-v4.1-flash");
+    // 状态点沿用供应商限额健康色
+    assert.equal(tree.root.findAllByProps({ className: "qm-dot ok" }).length, 1);
+  } finally { await act(async () => { tree?.unmount(); }); }
+});
+
+test("a page with no calls shows 暂无调用 and never borrows another page's supplier", async () => {
+  const state = {
+    ok: true, trafficStale: false, active: null,
+    suppliers: [{ id: "deepseek", name: "DeepSeek", current: true, todayTokens: 1200, state: "ok", headline: { kind: "pct", pct: "3%", reset: "—" }, entries: [] }],
+  };
+  const t = (key, params) => {
+    const dict = { title: "用量", today: "今日 {n}", noneActive: "暂无调用", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" };
+    return String(dict[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
+  };
+  const Component = client(async () => ({ json: async () => state }));
+  let tree;
+  try {
+    await act(async () => { tree = create(React.createElement(Component, { wide: true, t })); });
+    const { l2, l3 } = lines(tree);
+    assert.equal(textOf(l2), "暂无调用");
+    assert.ok(!textOf(l2).includes("DeepSeek"));
+    // 无在用供应商 ⇒ 不显示限额/重置（那是「在用供应商」的信息），只留今日量与候选计数
+    assert.equal(textOf(l3), "");
+    assert.equal(textOf(lines(tree).l1), "待命·今日 1K");
+    assert.equal(tree.root.findAllByProps({ className: "qm-count" }).length, 0);
+  } finally { await act(async () => { tree?.unmount(); }); }
+});
+
+test("?qm-strip=B|C switches the wide-strip layout variant", async () => {
+  const state = { ok: true, trafficStale: false, active: { supplierId: "ds", name: "DeepSeek", model: "chat", at: Date.now() }, suppliers: [] };
+  const t = (key, params) => String({ title: "用量", today: "今日 {n}", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" }[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
+  const Component = client(async () => ({ json: async () => state }), [], { search: "?qm-strip=B" });
+  let tree;
+  try {
+    await act(async () => { tree = create(React.createElement(Component, { wide: true, t })); });
+    assert.equal(tree.root.findAllByProps({ "data-qm-variant": "B" }).length, 1);
+    const b = tree.root.findByProps({ "data-qm-variant": "B" });
+    assert.ok(b.props.className.includes("qm-vB"));
+  } finally { await act(async () => { tree?.unmount(); }); }
+});
+
+test("reset time is rendered as a precise countdown from resetAt", async () => {
+  const t = (key, params) => {
+    const dict = { title: "用量", today: "今日 {n}", quota: "限额", noneActive: "暂无调用", countBadge: "×{n}",
+      connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个",
+      resetInHM: "{h}h{m} 后重置", resetInDH: "{d}d{h}h 后重置", resetSoon: "即将重置" };
+    return String(dict[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
+  };
+  const render = async (headline, entry) => {
+    const state = {
+      ok: true, traffic: { channelAlive: true },
+      active: { supplierId: "cc", name: "Command Code", model: "claude-sonnet-4.5", at: Date.now() },
+      suppliers: [{ id: "cc", name: "Command Code", current: true, enabled: true, added: true, state: "ok",
+        todayTokens: 0, headline, entries: [entry] }],
+    };
+    const Component = client(async () => ({ json: async () => state }));
+    let tree;
+    await act(async () => { tree = create(React.createElement(Component, { wide: true, t })); });
+    const out = textOf(tree.root.findByProps({ className: "qm-l3" }));
+    await act(async () => { tree.unmount(); });
+    return out;
+  };
+  // 2 小时 13 分后重置（渲染有耗时，分钟可能刚好借位，故按同一时刻算期望值并容许 1 分钟差）
+  const hmAt = Date.now() + (2 * 60 + 13) * 60_000 + 30_000;
+  const inHM = await render(
+    { kind: "pct", pct: "5%", reset: "约 2 小时后重置", resetAt: hmAt },
+    { name: "5h 窗口", pct: 5, reset: "约 2 小时后重置", resetAt: hmAt },
+  );
+  const hmRemain = Math.floor((hmAt - Date.now()) / 60_000);
+  assert.ok(
+    inHM === `限额 5% · 2h${String(hmRemain % 60).padStart(2, "0")} 后重置`
+      || inHM === `限额 5% · 2h${String((hmRemain + 1) % 60).padStart(2, "0")} 后重置`,
+    `unexpected countdown: ${inHM}`,
+  );
+  // 1 天 19 小时后重置
+  const dhAt = Date.now() + (43 * 60) * 60_000 + 30_000;
+  const inDH = await render(
+    { kind: "pct", pct: "3%", reset: "9月14日 重置", resetAt: dhAt },
+    { name: "周用量", pct: 3, reset: "9月14日 重置", resetAt: dhAt },
+  );
+  assert.equal(inDH, "限额 3% · 1d19h 后重置");
+  // 已过期 → 即将重置
+  const past = await render(
+    { kind: "pct", pct: "1%", reset: "—", resetAt: Date.now() - 1000 },
+    { name: "窗口", pct: 1, reset: "—", resetAt: Date.now() - 1000 },
+  );
+  assert.equal(past, "限额 1% · 即将重置");
+  // 只有文案、没有时刻 → 不猜，原样回落
+  const fallback = await render(
+    { kind: "pct", pct: "2%", reset: "约 5 小时后重置" },
+    { name: "窗口", pct: 2, reset: "约 5 小时后重置" },
+  );
+  assert.equal(fallback, "限额 2% · 约 5 小时后重置");
+});
+
+test("connection status degrades on fetch failure and reports 未连接 only when nothing is configured", async () => {
+  const t = (key, params) => {
+    const dict = { title: "用量", today: "今日 {n}", connOk: "已连接", connWarn: "已连接 · 降级", connStandby: "待命", connDown: "未连接", connFailed: "取数失败 {n} 个", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}h{h} 后重置", resetSoon: "即将重置" };
+    return String(dict[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
+  };
+  const mk = (state) => client(async () => ({ json: async () => state }));
+  const render = async (state) => {
+    const Component = mk(state);
+    let tree;
+    await act(async () => { tree = create(React.createElement(Component, { wide: true, t })); });
+    const l1 = tree.root.findByProps({ className: "qm-l1" });
+    const conn = tree.root.findAllByType("span")
+      .filter((n) => typeof n.props.className === "string" && n.props.className.includes("qm-conn-"))
+      .map((n) => ({ cls: n.props.className, text: textOf(n), title: n.props.title }));
+    const out = { l1: textOf(l1), conn };
+    await act(async () => { tree.unmount(); });
+    return out;
+  };
+  // 通道活着 + 一个已配置供应商标记 err ⇒ 降级，并在连接状态 title 里带上失败个数
+  const degraded = await render({
+    ok: true, traffic: { channelAlive: true }, active: null,
+    suppliers: [{ id: "ds", name: "DeepSeek", current: false, enabled: true, added: true, state: "err", todayTokens: 0 }],
+  });
+  assert.equal(degraded.conn[0].text, "已连接 · 降级");
+  assert.ok(degraded.conn[0].cls.includes("qm-conn-warn"));
+  assert.equal(degraded.conn[0].title, "取数失败 1 个");
+  // 通道从未见流量 + 没有任何已配置供应商 ⇒ 未连接
+  const down = await render({ ok: true, traffic: { channelAlive: false }, active: null, suppliers: [] });
+  assert.equal(down.conn[0].text, "未连接");
+  assert.ok(down.conn[0].cls.includes("qm-conn-err"));
+  // 停用/未添加的供应商即使 err 也不该把整体判成降级（口径：只看 enabled ∧ added）
+  const offIgnored = await render({
+    ok: true, traffic: { channelAlive: true }, active: null,
+    suppliers: [{ id: "ds", name: "DeepSeek", current: false, enabled: false, added: false, state: "err", todayTokens: 0 }],
+  });
+  assert.equal(offIgnored.conn[0].text, "已连接");
+});
+
+test("popover and detail card show the same precise reset countdown", async () => {
+  const t = (key, params) => {
+    const dict = { title: "用量", today: "今日 {n}", quota: "限额", detail: "详情", close: "关闭", settings: "设置",
+      refresh: "刷新", usedShort: "已用", noData: "无数据", lastRefresh: "上次刷新", poll: "每 {n}s",
+      detailTitle: "供应商限额明细", historySummary: "刷新历史（最近 {n} 条）", colTime: "时间", colSupplier: "供应商",
+      colResult: "结果", colOk: "成功", colFail: "失败", colMain: "主指标", colNote: "备注", allConfigured: "全部（共 {n}）",
+      connOk: "已连接", resetInHM: "{h}h{m} 后重置", resetInDH: "{d}d{h}h 后重置", resetSoon: "即将重置" };
+    return String(dict[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => (params && params[k] !== undefined ? params[k] : ""));
+  };
+  const at = Date.now() + (5 * 60 + 7) * 60_000 + 30_000;
+  const state = {
+    ok: true, traffic: { channelAlive: true }, trafficStale: false, active: null,
+    suppliers: [{ id: "cc", name: "Command Code", current: true, added: true, enabled: true, state: "ok",
+      todayTokens: 10, headline: { kind: "pct", pct: "5%", reset: "约 5 小时后重置", resetAt: at },
+      entries: [{ name: "5h 窗口", kind: "win", pct: 5, remain: "95%", reset: "约 5 小时后重置", resetAt: at, note: "" }] }],
+  };
+  const Component = client(async () => ({ json: async () => state }));
+  let tree;
+  try {
+    await act(async () => { tree = create(React.createElement(Component, { wide: true, t })); });
+    // Popover：点开紧凑条
+    await act(async () => { tree.root.findByProps({ "data-qm-variant": "A" }).props.onClick(); });
+    const row = tree.root.findByProps({ className: "qm-srow-entry" });
+    const rowText = textOf(row);
+    assert.match(rowText, /5h\d\d 后重置/, `popover 应显示精确倒计时: ${rowText}`);
+    assert.ok(!rowText.includes("约 5 小时后重置"), "popover 不该再显示四舍五入文案");
+    // 详情弹层：从 Popover 进入
+    const detailBtn = tree.root.findAllByType("button").find((b) => b.children.includes("详情"));
+    await act(async () => { detailBtn.props.onClick(); });
+    const card = tree.root.findByProps({ className: "qm-card-item" });
+    assert.match(textOf(card), /5h\d\d 后重置/, "详情卡片应显示同一倒计时");
   } finally { await act(async () => { tree?.unmount(); }); }
 });

@@ -177,7 +177,12 @@ for (const e of cc.entries) {
   assert.notEqual(e.reset, "—", `${e.name} 应带重置时间`);
   assert.match(e.reset, /重置$/);
   assert.equal(e.note.includes("未提供重置时刻"), false);
+  // 原始时刻随条目下发（客户端据此算精确倒计时 *h*m / *d*h）；文案是四舍五入过的，时刻不是
+  assert.ok(Number.isFinite(e.resetAt), `${e.name} 应带 epoch-毫秒 resetAt`);
 }
+assert.equal(cc.entries.find((e) => e.name.includes("5h")).resetAt, Date.UTC(2025, 7, 26, 5),
+  "5h 窗口的 resetAt 应是原始 epoch-毫秒（不被 formatReset 的整小时取整影响）");
+assert.ok(Number.isFinite(cc.headline.resetAt), "headline 也应镜像最紧条目的 resetAt");
 assert.match(monthly.note, /订阅 active/);
 console.log("✓ commandcode:", cc.entries.map((e) => `${e.name}:${e.pct}% (${e.reset})`).join(" | "));
 
@@ -188,6 +193,7 @@ const ccNoReset = await PROVIDERS.commandcode.query(cfg());
 for (const e of ccNoReset.entries.filter((x) => x.kind === "win" && !x.name.startsWith("月额度"))) {
   assert.equal(e.reset, "—");
   assert.equal(e.note, "未提供重置时刻");
+  assert.equal(e.resetAt, null, "没有时刻就是 null——不能伪造，客户端据此回落宿主文案");
 }
 console.log("✓ commandcode 缺 resetAt → 诚实标注:", ccNoReset.entries.filter((e) => e.name.startsWith("5h")).map((e) => `${e.name}:${e.note}`).join(" | "));
 

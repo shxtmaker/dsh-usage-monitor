@@ -12,6 +12,10 @@ _Avoid_: Provider, service, vendor
 A supplier's allowance measured against a recurring period: 限额 limit / 已用 used / 剩余 remaining / 重置时间 reset time, whichever subset that supplier exposes.
 _Avoid_: monthly limit, allowance
 
+**重置倒计时 (Reset Countdown)**:
+The remaining time until a **周期限额** window resets, shown in the widget's meta line. Computed client-side from the supplier's **original reset instant** (`resetAt`, epoch-ms, carried per 限额项 and mirrored on the headline) so it reads `2h13` / `1d19h` rather than a rounded「约 N 小时后重置」. Shown identically in **all four** reset surfaces — the widget meta line, the widget Popover, the 详情页 entry card, and the supplier config page's current-quota preview. When a supplier exposes no instant, the host's own text stands unchanged — the plugin never derives an instant to fill the gap.
+_Avoid_: 重置时间文案 (that is the pre-rounded host text), 到期时间
+
 **可用周期限额 (Available Quota)**:
 The remaining headroom of the current period — what the plugin's display shows as the headline number. Also covers balance (余额) and rate-limit headroom (速率限额余量) since suppliers disagree on what "quota" means; the display normalizes to limit/used/remaining/reset with blanks for what a supplier doesn't expose.
 
@@ -40,7 +44,7 @@ v0.3 auto-detect: every plain API key present in the DSH seam (`llm-deepseek` se
 _Avoid_: guessing by key prefix (upstream forbids it)
 
 **小组件 (Widget)**:
-The compact, always-visible DSH GUI display showing which model supplier the currently displayed page is using. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `quota-monitor`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses. The wide strip's main display is the **在用供应商** of the **当前显示页** (the session selected in the session browser = official `sessions.list.current`; the client subscribes and refetches immediately on page switch); its Popover lists **当前供应商** quota entries.
+The compact, always-visible DSH GUI display showing the harness's connection to the plugin and which model supplier the currently displayed page is using. Since v0.2 it is embedded through the official `sidebar.footer.action` slot (list, keyed `quota-monitor`) rendered by the sidebar shell in the foot area in normal content flow — no DOM scraping, no floating/fixed panel — and switches to an icon-only rail state when the sidebar collapses. Since v1.2 the wide strip is **three lines**: **连接状态** · **当日消耗量** · the candidate count (line 1), the **在用供应商** of the **当前显示页** (line 2; the session selected in the session browser = official `sessions.list.current`; the client subscribes and refetches immediately on page switch), then the page's meta line — quota state and **重置倒计时** (line 3). Its Popover lists **当前供应商** quota entries.
 _Avoid_: panel, card
 
 **当前显示页 (Current Page)**:
@@ -56,8 +60,12 @@ A supplier the harness is actually using now — enabled in the DSH configuratio
 _Avoid_: active provider, used supplier
 
 **在用供应商 (Active Supplier)**:
-The supplier of the **most recent** real LLM call observed within the **当前显示页** from `session/event` (route/model per `session.id` in `sessionRouteSeen`), carrying the model name of that call; this is what the wide sidebar compact strip shows by default (「在用 DeepSeek · deepseek-chat」+ relative time). A page with no calls shows "暂无调用"; independent of the enabled/current filtering that governs the popover list, and of other pages' traffic. (No `?session=` → the API returns the global latest instead.)
+The supplier of the **most recent** real LLM call observed within the **当前显示页** from `session/event` (route/model per `session.id` in `sessionRouteSeen`), carrying the model name of that call; this is the **第 2 行** of the wide sidebar compact strip (「在用 DeepSeek · deepseek-chat」), which is why that row carries no quota figures of its own. A page with no calls shows "暂无调用"; independent of the enabled/current filtering that governs the popover list, and of other pages' traffic. (No `?session=` → the API returns the global latest instead.)
 _Avoid_: active provider, 当前路由供应商, 正在调用的 provider
+
+**连接状态 (Connection Status)**:
+The **第 1 行** headline of the wide compact strip, pairing the plugin's link to the harness with its fetch health: `已连接` (the DSH event channel has seen a real `session/event`, and no **已添加供应商** is failing), `已连接 · 降级` (channel alive, but at least one enabled-and-added supplier is in `err`), `待命` (no traffic event seen yet, but suppliers are configured — a freshly started harness is **not** 「断开」), `未连接` (no traffic event seen and nothing configured). It never claims a disconnection it cannot observe.
+_Avoid_: 在线/离线 (implies reachability the plugin cannot test), 健康度 (that is per-supplier quota state)
 
 **当日消耗量 (Daily Usage)**:
 Token consumption attributed per supplier from DSH session events, aggregated over the current calendar day (resets at 00:00); suppliers without a DSH route show "—". Backed by the plugin's **本地用量数据** so it survives restarts.
