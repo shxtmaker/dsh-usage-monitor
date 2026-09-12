@@ -23,6 +23,7 @@
 | `npm run test:pack` | 通过：39 个文件、152,007 字节；`lib/scan-coordinator.js` 等运行时模块已在必需文件断言内 |
 | `for f in lib/*.js; do node --check $f; done` | 全部通过 |
 | `git diff --check` | 无空白错误 |
+| GitHub Actions `Verify`（ubuntu + windows） | 本版本提交上两个平台均成功（tag `v1.3.0` = `ba2ee3d`） |
 
 新增/扩展的测试覆盖：
 
@@ -94,7 +95,9 @@
 
 ## 6. 验证边界（未执行或不适用）
 
-- **未在 Windows 主机上运行**：Windows 的「目标目录已存在时 rename 失败」语义以 `syncBuiltinESMExports` 注入 `EPERM`/`EXDEV` 覆盖，并在真实临时目录上验证回落读与恢复重试；CI 配置（`.github/workflows/verify.yml`）仍按 `ubuntu-latest` + `windows-latest` 矩阵运行，本机未触发远端 CI。
+- **未在本机 Windows 上运行**：Windows 的「目标目录已存在时 rename 失败」语义以 `syncBuiltinESMExports` 注入 `EPERM`/`EXDEV` 覆盖，并在真实临时目录上验证回落读与恢复重试。
+  **远端 CI 已在真实 Windows 上验证通过**：`.github/workflows/verify.yml`（`ubuntu-latest` + `windows-latest`）在本版本提交上全部成功。
+  该矩阵同时也是 C4 的实证：同一套 `test/storage.mjs` 在基线提交 `9f63a178` 上 `windows-latest` 失败（`AssertionError: 应返回新目录路径`，即「预先创建目标目录再 rename」在 Windows 必然失败），修复后通过。
 - **未接入真实 DSH 实例**：未做安装加载、官方槽位、两会话切换、超时与设置保存失败的真机验收；真实宿主接入不代表真实计费接口已验证。
 - **未访问真实供应商账户**：全部查询使用替身响应。
 - **未做改动前/后同环境对照基准**：需要检出基线提交重跑同一脚本；本报告只给改动后实测值。
