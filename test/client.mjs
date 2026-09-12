@@ -6,30 +6,70 @@ import React from "react";
 import { create, act } from "react-test-renderer";
 
 // 第三个参数两种用法都要支持：新的 `slot` 名称（GH v1.2.1 测试）与旧的 `location` 对象（本地用例）
+// timers：数组时用作 setInterval/setTimeout 的手动桩（旧用例按索引触发）；
+//         对象 { timers, document } 时启用「真实定时器 + 可切换可见性」模式（请求生命周期用例）。
 function client(fetch, timers = [], third = "sidebar.footer.action", fourth) {
   const slot = typeof third === "string" ? third : (fourth || "sidebar.footer.action");
   const location = typeof third === "string" ? { search: "" } : third;
+  const manual = Array.isArray(timers);
+  const controls = manual ? null : timers;
+  const scheduled = manual ? timers : controls.timers;
   let plugin;
   const slots = {};
   const listeners = {};
-  const document = { querySelector() { return true; }, body: {}, addEventListener() {}, removeEventListener() {} };
+  const timersFor = (type) => (listeners[type] = listeners[type] || []);
+  const document = {
+    querySelector() { return true; },
+    body: {},
+    visibilityState: manual ? undefined : (controls.visibilityState || "visible"),
+    addEventListener(type, fn) { timersFor(type).push(fn); },
+    removeEventListener(type, fn) {
+      if (listeners[type]) listeners[type] = listeners[type].filter((f) => f !== fn);
+    },
+  };
   const window = {
     __ModuleLoader__: { load({ factory }) {
       plugin = factory((id) => id === "react" ? React : { createPortal: (child) => child });
     } },
     location,
-    addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+    addEventListener(type, fn) { timersFor(type).push(fn); },
     removeEventListener(type, fn) {
       if (listeners[type]) listeners[type] = listeners[type].filter((f) => f !== fn);
     },
   };
-  vm.runInNewContext(readFileSync(new URL("../lib/client.js", import.meta.url), "utf8"), {
-    window, document, fetch, console, globalThis: { location },
-    setInterval(fn) { timers.push(fn); return fn; }, clearInterval() {},
-  });
+  let handleSeq = 0;
+  const handles = new Map();
+  const context = {
+    window, document, fetch, console, location,
+    AbortController, AbortSignal,
+    setTimeout(fn, ms) {
+      if (manual) return scheduled.push(fn);
+      const handle = { id: ++handleSeq, fn, ms };
+      handles.set(handle.id, handle);
+      scheduled.push(handle);
+      handle.native = setTimeout(() => { handles.delete(handle.id); fn(); }, ms);
+      handle.native.unref?.();
+      return handle;
+    },
+    clearTimeout(handle) {
+      if (!manual && handle && handles.delete(handle.id)) {
+        clearTimeout(handle.native);
+        const index = scheduled.indexOf(handle);
+        if (index >= 0) scheduled.splice(index, 1);
+      }
+    },
+    setInterval(fn) { scheduled.push(fn); return fn; },
+    clearInterval() {},
+  };
+  context.globalThis = context;
+  vm.runInNewContext(readFileSync(new URL("../lib/client.js", import.meta.url), "utf8"), context);
   plugin.apply({ locale: { register() {} }, effect() {}, slots: {
     inject(name, fn) { fn(); }, register(descriptor, component) { slots[descriptor.name ?? descriptor.key] = component; },
   } });
+  slots.__document = document;
+  slots.__listeners = listeners;
+  slots.__timers = scheduled;
+  slots.__pending = (ms) => scheduled.filter((entry) => entry && typeof entry === "object" && entry.ms === ms);
   return slots[slot];
 }
 
@@ -60,15 +100,26 @@ test("collapsed sidebar click opens and closes the detail dialog", async () => {
 });
 
 test("late state responses cannot overwrite a newer poll", async () => {
-  const pending = [];
+  const calls = [];
   const timers = [];
-  const Component = client(() => new Promise((resolve) => pending.push(resolve)), timers);
+  const Component = client((url) => new Promise((resolve) => calls.push({ url: String(url), resolve })), { timers });
   let tree;
+  const flush = async (index, name) => {
+    await act(async () => { calls[index].resolve({ ok: true, json: async () => payload(name) }); });
+  };
   try {
     await act(async () => { tree = create(React.createElement(Component, { wide: true, t: (k) => k })); });
-    await act(async () => { timers[0](); });
-    await act(async () => { pending[1]({ json: async () => payload("new") }); });
-    await act(async () => { pending[0]({ json: async () => payload("old") }); });
+    assert.equal(calls.length, 1, "挂载后应发起一次后台 GET");
+    assert.ok(timers.some((t) => t?.ms === 30_000), "在途 GET 必须有 30s 初始等待上限");
+    // 第一个请求回来后才会排下一次（完成后调度，不是固定间隔）：触发它形成第二个在途请求
+    await flush(0, "first");
+    const nextPoll = timers.find((t) => t?.ms === 10_000 && typeof t.fn === "function");
+    assert.ok(nextPoll, "成功后必须排一次 10s 延迟的后续 GET");
+    await act(async () => { nextPoll.fn(); });
+    assert.equal(calls.length, 2, "第二次后台 GET 必须真的发出去");
+    // 先回新的、再回旧的（模拟网络乱序）：旧结果绝不能回写覆盖新结果
+    await flush(1, "new");
+    await flush(0, "old");
     assert.ok(textOf(lines(tree).l2).includes("new"));
     assert.ok(!textOf(lines(tree).l2).includes("old"));
   } finally { await act(async () => { tree?.unmount(); }); }
@@ -311,4 +362,62 @@ test("settings preserve non-secret values and retain the draft on rejected saves
     assert.equal(tree.root.findAllByProps({ className: "s-saved" }).length, 0);
     assert.equal(tree.root.findByProps({ role: "alert" }).children[0], "validation rejected");
   } finally { await act(async () => tree?.unmount()); }
+});
+
+// ---- A3：阈值判定统一（详情卡 / 供应商状态药丸 / 设置预览共用同一口径） ----
+const entryTones = (tree) => tree.root.findAll((n) => n.props?.className?.startsWith?.("ci-big")).map((n) => n.props.className);
+const pillText = (tree) => {
+  const pill = tree.root.findAll((n) => typeof n.props?.className === "string" && /^qm-pill\b/.test(n.props.className))[0];
+  return pill ? textOf(pill) : null;
+};
+
+test("thresholds classify 49/50/60/70 the same way in detail cards and supplier status", async () => {
+  const mkState = (warnPct, critPct) => ({
+    ok: true, traffic: { channelAlive: true },
+    suppliers: [{ id: "opencode", name: "OpenCode", added: true, enabled: true, current: true,
+      warnPct, critPct, state: "ok", todayTokens: 0,
+      headline: { kind: "pct", pct: "70%" },
+      entries: [49, 50, 60, 70].map((pct) => ({ name: `e${pct}`, kind: "win", limit: "100", used: `${pct}`, remain: `${100 - pct}`, pct, reset: "—" })) }],
+  });
+  // 默认阈值 80/95：49/50/60/70 全是正常；状态药丸同样是 stateOk
+  for (const [warnPct, critPct, expected] of [
+    [undefined, undefined, ["ci-big ok", "ci-big ok", "ci-big ok", "ci-big ok"]],
+    [50, 70, ["ci-big ok", "ci-big warn", "ci-big warn", "ci-big crit"]],
+  ]) {
+    const Component = client(async () => ({ json: async () => mkState(warnPct, critPct) }));
+    let tree;
+    try {
+      await act(async () => { tree = create(React.createElement(Component, { wide: true, t: (k) => k })); });
+      await act(async () => { tree.root.findByProps({ "data-qm-variant": "A" }).props.onClick(); });
+      await act(async () => { tree.root.findAllByType("button").find((b) => textOf(b).includes("detail")).props.onClick(); });
+      assert.deepEqual(entryTones(tree), expected, `warn=${warnPct} crit=${critPct} 的详情卡色调`);
+      assert.equal(pillText(tree), expected.at(-1) === "ci-big crit" ? "stateCrit" : "stateOk",
+        "状态药丸与详情卡同一判定");
+    } finally { await act(async () => { tree?.unmount(); }); }
+  }
+});
+
+test("missing or unknown percentages stay unknown instead of becoming a healthy 0%", async () => {
+  const state = {
+    ok: true, traffic: { channelAlive: true },
+    suppliers: [{ id: "ds", name: "DeepSeek", added: true, enabled: true, current: true, warnPct: 80, critPct: 95,
+      state: "ok", todayTokens: 0, headline: { kind: "amt", amt: "—" },
+      entries: [
+        { name: "no-pct", kind: "bal", limit: "—", used: "—", remain: "$3", pct: null, reset: "—" },
+        { name: "nan-pct", kind: "win", limit: "100", used: "—", remain: "—", pct: NaN, reset: "—" },
+        { name: "undef-pct", kind: "win", limit: "100", used: "—", remain: "—", pct: undefined, reset: "—" },
+      ] }],
+  };
+  const Component = client(async () => ({ json: async () => state }));
+  let tree;
+  try {
+    await act(async () => { tree = create(React.createElement(Component, { wide: true, t: (k) => k })); });
+    await act(async () => { tree.root.findByProps({ "data-qm-variant": "A" }).props.onClick(); });
+    await act(async () => { tree.root.findAllByType("button").find((b) => textOf(b).includes("detail")).props.onClick(); });
+    // 未知百分比既不显示 0%，也不冒充正常（ok）；余额条保留「无限额概念」提示
+    assert.deepEqual(entryTones(tree), ["ci-big err", "ci-big err", "ci-big err"]);
+    assert.ok(tree.root.findAllByProps({ className: "ci-err" }).some((n) => textOf(n).includes("noQuotaConcept")));
+    // 药丸仍由宿主 state 决定（无有效百分比 → stateOk），不会被未知值拉成 err
+    assert.equal(pillText(tree), "stateOk");
+  } finally { await act(async () => { tree?.unmount(); }); }
 });

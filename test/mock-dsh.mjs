@@ -305,7 +305,17 @@ assert.equal(resolved.suppliers.opencode.enabled, false, "rescan 不得重新启
 assert.ok(rsc.payload.detect.at, "rescan 后 detect.at 已刷新");
 assert.ok(rsc.payload.detect.found.includes("commandcode"));
 assert.equal((await call("/api/dsh-token-quota/rescan", null, {}, "GET")).status, 405, "rescan 仅接受 POST");
-console.log("✓ POST /rescan：单实例扫描 + 自动填入幂等 + 尊重显式关闭 + 返回 state 载荷");
+// B1：手动重扫必须对应「点击后」的新扫描（版本推进且完成版本追上目标版本）
+assert.equal(rsc.payload.scan.completed, rsc.payload.scan.requested, "rescan 完成后目标版本必须已完成");
+assert.equal(rsc.payload.detect.error, null, "成功重扫不得留下错误");
+console.log("✓ POST /rescan：单实例扫描 + 自动填入幂等 + 尊重显式关闭 + 返回 state 载荷（版本已覆盖）");
+
+// ---- B3：手动填写密钥 / 显式关闭不被自动填入覆盖（同一窗口的后续扫描也不覆盖）----
+await call("/api/dsh-token-quota/settings", { suppliers: { opencode: { apiKey: "sk-user-typed" } } });
+const keepRescan = await call("/api/dsh-token-quota/rescan");
+assert.equal(resolved.suppliers.opencode.apiKey, "sk-user-typed", "自动填入不得覆盖用户手动填写的密钥");
+assert.equal(keepRescan.payload.suppliers.find((s) => s.id === "opencode").keySet, true);
+console.log("✓ 用户手填密钥：后续扫描不覆盖（首次复制契约）");
 
 // ---- test 路由：401 → ok:false auth ----
 const t = await call("/api/dsh-token-quota/test", { supplier: "commandcode" });

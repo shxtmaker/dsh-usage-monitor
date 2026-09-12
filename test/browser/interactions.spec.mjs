@@ -14,7 +14,8 @@ test("settings trap keyboard focus, preserve organization, and retain a rejected
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0); await expect(opener).toBeFocused();
   await opener.click();
-  await page.locator(".qm-page-main").click();
+  // 目录里可能有多个供应商行：显式点名 OpenCode（strict mode 下不允许多命中）
+  await dialog.locator(".qm-page-row", { hasText: "OpenCode" }).getByRole("button", { name: "打开配置" }).click();
   const orgInput = page.getByLabel("org id（可选）", { exact: true });
   await expect(orgInput).toHaveValue("org-original");
   const warning = page.locator('input[type="number"][max="99"]');
@@ -25,8 +26,8 @@ test("settings trap keyboard focus, preserve organization, and retain a rejected
   await expect(orgInput).toHaveValue("org-original");
   await warning.fill("80");
   await dialog.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.locator(".qm-page-main")).toBeVisible();
-  await page.locator(".qm-page-main").click();
+  await expect(dialog.locator(".qm-page-list")).toBeVisible();
+  await dialog.locator(".qm-page-row", { hasText: "OpenCode" }).getByRole("button", { name: "打开配置" }).click();
   await expect(page.locator('[value="org-original"]')).toHaveValue("org-original");
 });
 
